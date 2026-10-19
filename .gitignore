@@ -42,21 +42,21 @@ dist/
 release-notes.md
 /novel-translate-cli
 
-tasks
-refer/
-output*
-workspace/
-novels/
+/tasks
+/refer/
+/output*
+/workspace/
+/novels/
+/config/
 config/config.json
 config/models-cache.json
 *.log
-logs/
-config/
+/logs/
 scratch/
 __pycache__/
 *.pyc
-config-laptop/
-workspace-laptop/
+/config-laptop/
+/workspace-laptop/
 
 # Documentation
 docs/
@@ -78,10 +78,15 @@ docs/
 *Re-Zero*
 
 # Personal skills, glossaries & conventions
-Skills/
-skills/
-!assets/translation/skills/
+/Skills/
+/skills/
 *quy_uoc*
 *xung_ho*
 *glossary*
 *Glossary*
+
+# Whitelist source directories
+!internal/
+!internal/**
+!assets/
+!assets/**

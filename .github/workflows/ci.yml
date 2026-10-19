@@ -52,3 +52,12 @@ jobs:
 
       - name: Build translation binary
         run: go build -trimpath ./cmd/novel-translate-cli
+
+      - name: Upload executable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: novel-translate-${{ matrix.os }}
+          path: |
+            novel-translate-cli
+            novel-translate-cli.exe
+          if-no-files-found: ignore

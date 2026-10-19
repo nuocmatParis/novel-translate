@@ -40,7 +40,6 @@ archives:
       - README.md
       - LICENSE
       - config.example.jsonc
-      - HUONG_DAN_SU_DUNG.md
     name_template: >-
       {{ .ProjectName }}_{{ .Version }}_
       {{- title .Os }}_
