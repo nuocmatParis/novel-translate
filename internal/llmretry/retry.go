@@ -31,6 +31,8 @@ type Event struct {
 type Config struct {
 	Agent   string
 	OnRetry func(Event)
+	// MaxRetries bounds request retries when supplied; nil keeps legacy behavior.
+	MaxRetries *int
 }
 
 // Generate 调用 model.Generate。retryable 错误退避后持续重试，直到成功或
@@ -45,6 +47,9 @@ func Generate(ctx context.Context, model Generator, cfg Config, messages []agent
 			return nil, ctx.Err()
 		}
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || !isRetryable(err) {
+			return nil, err
+		}
+		if cfg.MaxRetries != nil && retry > *cfg.MaxRetries {
 			return nil, err
 		}
 

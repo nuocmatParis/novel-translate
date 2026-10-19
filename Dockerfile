@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM golang:1.25 AS builder
+FROM --platform=$BUILDPLATFORM golang:1.25.5 AS builder
 
 WORKDIR /src
 
@@ -14,17 +14,19 @@ COPY . .
 
 RUN GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build -trimpath -ldflags="-s -w" \
-    -o /out/ainovel-cli \
-    ./cmd/ainovel-cli
+    -o /out/novel-translate-cli \
+    ./cmd/novel-translate-cli
 
 FROM alpine:3.22
 
 RUN apk add --no-cache \
     ca-certificates \
-    tzdata
+    tzdata \
+    openjdk17-jre-headless \
+    font-liberation
 
 WORKDIR /workspace
 
-COPY --from=builder /out/ainovel-cli /usr/local/bin/ainovel-cli
+COPY --from=builder /out/novel-translate-cli /usr/local/bin/novel-translate-cli
 
-ENTRYPOINT ["ainovel-cli"]
+ENTRYPOINT ["novel-translate-cli"]

@@ -6,7 +6,6 @@ go.work
 go.work.sum
 .DS_Store
 .env
-.ainovel
 config
 workspace
 dist
@@ -14,3 +13,7 @@ tasks
 refer
 output*
 *.log
+scratch
+.translation_work
+.novel-translate
+*.epub

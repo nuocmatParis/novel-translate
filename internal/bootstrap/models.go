@@ -146,19 +146,27 @@ func (ms *ModelSet) ForRole(role string) agentcore.ChatModel {
 
 // ForRoleWithFailover 返回带有单次请求级 fallback 的角色模型。
 // 仅当该角色显式配置了 fallbacks 时生效；未配置时退化为普通模型。
-func (ms *ModelSet) ForRoleWithFailover(role string, report FailoverReporter) agentcore.ChatModel {
+func (ms *ModelSet) ForRoleWithFailover(role string, report FailoverReporter, wrappers ...func(string, string, agentcore.ChatModel) agentcore.ChatModel) agentcore.ChatModel {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 	primary, ok := ms.models[role]
 	if !ok {
-		return ms.Default
+		primary = ms.Default
+	}
+	var wrap func(string, string, agentcore.ChatModel) agentcore.ChatModel
+	if len(wrappers) > 0 {
+		wrap = wrappers[0]
 	}
 	targets := ms.fallbacks[role]
 	if len(targets) == 0 {
+		if wrap != nil {
+			p, n := primary.Current()
+			return wrap(p, n, primary)
+		}
 		return primary
 	}
 	return &failoverModel{
-		role: role, primary: primary, set: ms, report: report,
+		role: role, primary: primary, set: ms, report: report, wrap: wrap,
 	}
 }
 
@@ -380,8 +388,14 @@ func createModelFromConfig(providerKey, model string, pc ProviderConfig, cache m
 		return nil, fmt.Errorf("provider %s stream_idle_timeout: %w: %w", providerKey, errs.ErrConfig, err)
 	}
 
+	apiKey := pc.APIKey
+	// The OpenAI-compatible adapter requires a nonempty bearer value even for
+	// explicitly configured local servers that do not authenticate requests.
+	if apiKey == "" && pc.AllowNoAPIKey && pc.BaseURL != "" && providerType == "openai" {
+		apiKey = "local-no-key"
+	}
 	m, err := llm.NewModel(providerType, model,
-		llm.WithAPIKey(pc.APIKey),
+		llm.WithAPIKey(apiKey),
 		llm.WithBaseURL(pc.BaseURL),
 		llm.WithStreamIdleTimeout(streamIdle),
 		llm.WithProviderExtra(providerExtra),
@@ -399,11 +413,19 @@ type failoverModel struct {
 	primary *SwappableModel
 	set     *ModelSet
 	report  FailoverReporter
+	wrap    func(string, string, agentcore.ChatModel) agentcore.ChatModel
+}
+
+func (m *failoverModel) attempt(t modelTarget) agentcore.ChatModel {
+	if m.wrap != nil {
+		return m.wrap(t.provider, t.name, t.model)
+	}
+	return t.model
 }
 
 func (m *failoverModel) Generate(ctx context.Context, messages []agentcore.Message, tools []agentcore.ToolSpec, opts ...agentcore.CallOption) (*agentcore.LLMResponse, error) {
 	current := m.currentTarget()
-	resp, err := current.model.Generate(ctx, messages, tools, opts...)
+	resp, err := m.attempt(current).Generate(ctx, messages, tools, opts...)
 	if err == nil {
 		return resp, nil
 	}
@@ -413,7 +435,7 @@ func (m *failoverModel) Generate(ctx context.Context, messages []agentcore.Messa
 		return nil, err
 	}
 	m.reportFailover(current, next, reason, err)
-	return next.model.Generate(ctx, messages, tools, opts...)
+	return m.attempt(next).Generate(ctx, messages, tools, opts...)
 }
 
 func (m *failoverModel) GenerateStream(ctx context.Context, messages []agentcore.Message, tools []agentcore.ToolSpec, opts ...agentcore.CallOption) (<-chan agentcore.StreamEvent, error) {

@@ -64,13 +64,15 @@ type Hooks struct {
 // Request 定义一次直接结构化返回。Contract 是结构的单一来源，Validate 只处理
 // JSON Schema 无法表达的业务约束。
 type Request[T any] struct {
-	Contract     Contract
-	SystemPrompt string
-	Payload      string
-	Options      []agentcore.CallOption
-	Validate     func(*T) error
-	Agent        string
-	Hooks        Hooks
+	Contract            Contract
+	SystemPrompt        string
+	Payload             string
+	Options             []agentcore.CallOption
+	Validate            func(*T) error
+	Agent               string
+	Hooks               Hooks
+	MaxCorrections      *int
+	MaxTransportRetries *int
 }
 
 const promptCorrection = "上面的输出不符合 JSON Schema。请根据错误修正，并只输出完整 JSON 对象，不要解释或 Markdown 围栏。"
@@ -106,8 +108,9 @@ func Execute[T any](ctx context.Context, model llmretry.Generator, req Request[T
 			return zero, err
 		}
 		resp, err := llmretry.Generate(ctx, model, llmretry.Config{
-			Agent:   req.Agent,
-			OnRetry: req.Hooks.RequestRetry,
+			Agent:      req.Agent,
+			OnRetry:    req.Hooks.RequestRetry,
+			MaxRetries: req.MaxTransportRetries,
 		}, messages, options...)
 		if err != nil {
 			if ctx.Err() != nil {
@@ -167,6 +170,9 @@ func Execute[T any](ctx context.Context, model llmretry.Generator, req Request[T
 
 		if native && layer != "semantic" {
 			return zero, &Failure{Kind: FailureContract, Contract: req.Contract.Name, Raw: raw, Err: fmt.Errorf("原生 schema 契约违约: %w", cause)}
+		}
+		if req.MaxCorrections != nil && attempt > *req.MaxCorrections {
+			return zero, &Failure{Kind: FailureContract, Contract: req.Contract.Name, Raw: raw, Err: fmt.Errorf("contract correction limit: %w", cause)}
 		}
 		correction := Correction{Attempt: attempt, Layer: layer, Mode: resolution.Mode, Raw: raw, Err: cause}
 		if req.Hooks.Correction != nil {

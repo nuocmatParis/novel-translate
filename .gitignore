@@ -27,8 +27,9 @@ go.work.sum
 # env file
 .env
 
-# 项目级配置 dotdir（镜像 ~/.ainovel/）：config.json 含密钥，rules/ 为本地写作偏好
-.ainovel/
+# Local credentials and workspace artifacts
+.novel-translate/
+.translation_work/
 
 # Editor/IDE
 .idea/
@@ -39,7 +40,7 @@ go.work.sum
 # GoReleaser artifacts
 dist/
 release-notes.md
-/ainovel-cli
+/novel-translate-cli
 
 tasks
 refer/
@@ -52,5 +53,35 @@ config/models-cache.json
 logs/
 config/
 scratch/
+__pycache__/
+*.pyc
 config-laptop/
 workspace-laptop/
+
+# Documentation
+docs/
+.docs/
+
+# Books, light novels & EPUBs
+*.epub
+*.mobi
+*.azw3
+*.pdf
+*.cbz
+*.cbr
+[Vv]ol*
+*rezero*
+*ReZero*
+*re_zero*
+*Re_Zero*
+*re-zero*
+*Re-Zero*
+
+# Personal skills, glossaries & conventions
+Skills/
+skills/
+!assets/translation/skills/
+*quy_uoc*
+*xung_ho*
+*glossary*
+*Glossary*
