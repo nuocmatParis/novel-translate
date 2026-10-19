@@ -121,6 +121,8 @@ func (m *translationTUI) actions() []tuiAction {
 			tuiAction{label: "Xuất EPUB xem trước", command: []string{"export", "--preview"}},
 			tuiAction{label: "Xuất EPUB hoàn chỉnh", command: []string{"export"}, confirm: true},
 			tuiAction{label: "Danh sách ảnh / trạng thái xử lý chữ", command: []string{"image", "list"}},
+			tuiAction{label: "Xuất ảnh gốc để xem / tự edit", command: []string{"image", "export"}},
+			tuiAction{label: "Lưu quyết định xử lý ảnh", form: "image"},
 		)
 	}
 	actions = append(actions, tuiAction{label: "Xem skills / quy ước", command: []string{"skill", "list"}})
@@ -135,6 +137,8 @@ type tuiVolumeStatus struct {
 	Imported       bool     `json:"source_imported"`
 	Stale          []string `json:"stale"`
 	FreshnessError string   `json:"freshness_error"`
+	Images         int      `json:"images"`
+	ImageIssues    int      `json:"image_issues"`
 }
 
 type tuiSnapshot struct {
@@ -457,6 +461,8 @@ func (m *translationTUI) openForm(kind string) {
 			path = bootstrap.DefaultConfigPath()
 		}
 		f.fields = []tuiField{{label: "File cấu hình provider JSON/JSONC", value: path}}
+	case "image":
+		f.fields = []tuiField{{label: "Image occurrence ID"}, {label: "no-text / keep-original / replace / transcript"}, {label: "Lý do / bằng chứng"}, {label: "File ảnh đã edit (chỉ replace)"}, {label: "File bản dịch UTF-8 (chỉ transcript)"}}
 	}
 	m.form = f
 }
@@ -520,6 +526,15 @@ func (m *translationTUI) submitForm() tea.Cmd {
 		if value(3) != "" {
 			args = append(args, "--previous", value(3))
 		}
+	case "image":
+		path = m.config.Root
+		args = []string{"image", "assess", "--volume", m.config.Volumes[m.volume].ID, "--id", value(0), "--disposition", value(1), "--reason", value(2)}
+		if value(1) == "replace" {
+			args = append(args, "--file", value(3))
+		}
+		if value(1) == "transcript" {
+			args = append(args, "--transcript-file", value(4))
+		}
 	case "provider":
 		// Never read/display keys in the TUI. Only persist the config file path,
 		// under the same workspace lock as other configuration mutations.
@@ -572,12 +587,20 @@ func (m *translationTUI) View() string {
 		} else {
 			v := m.config.Volumes[m.volume]
 			text := fmt.Sprintf("◀ Tập %d · %s ▶  [%d/%d]  Chưa nhập EPUB", v.Order, v.ID, m.volume+1, len(m.config.Volumes))
+			detail := ""
 			for _, s := range m.snapshot.Volumes {
 				if s.ID == v.ID && s.Imported {
 					text = fmt.Sprintf("◀ Tập %d · %s ▶  Dịch %d/%d · Đối chiếu %d · Cần xem lại %d", v.Order, v.ID, s.Translated, s.Eligible, s.Accepted, len(s.Stale))
+					detail = fmt.Sprintf("Ảnh: %d · Vấn đề ảnh: %d", s.Images, s.ImageIssues)
+					if s.FreshnessError != "" {
+						detail += " · Nguồn/bản thảo cần xử lý: " + cleanTUIText(s.FreshnessError)
+					}
 				}
 			}
 			content = append(content, accent.Render(line(text)))
+			if detail != "" {
+				content = append(content, line(detail))
+			}
 		}
 		u := m.snapshot.Usage
 		content = append(content, muted.Render(line(fmt.Sprintf("%d requests · Chi phí đã biết $%.4f · %d requests chưa rõ giá", u.Requests, u.KnownCostUSD, u.UnknownCostRequests))))
@@ -608,7 +631,7 @@ func (m *translationTUI) View() string {
 		content = append(content, "Nhấn y để chạy · n/Esc hủy")
 	} else {
 		actions := m.actions()
-		visible := max(3, min(len(actions), m.height-17))
+		visible := max(1, min(len(actions), m.height-len(content)-8))
 		start := max(0, min(m.selected-visible+1, len(actions)-visible))
 		for i := start; i < min(len(actions), start+visible); i++ {
 			text := "  " + actions[i].label

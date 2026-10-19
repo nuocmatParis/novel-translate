@@ -13,8 +13,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/voocel/ainovel-cli/internal/llmcontract"
+	"github.com/voocel/ainovel-cli/internal/translation/engine"
 	"github.com/voocel/ainovel-cli/internal/translation/model"
 	"github.com/voocel/ainovel-cli/internal/translation/testutil"
+	"github.com/voocel/ainovel-cli/internal/translation/verify"
 	"github.com/voocel/ainovel-cli/internal/translation/workspace"
 )
 
@@ -105,6 +107,23 @@ func TestTUIWorkspaceFormsAndOfflineImport(t *testing.T) {
 	}
 	if !strings.Contains(m.View(), "vol02") {
 		t.Fatal("selected volume missing from view")
+	}
+	v, _ := m.config.Volume("vol02")
+	_, book, err := engine.Source(*m.config, v, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	images := verify.Images(book)
+	if len(images) == 0 || m.snapshot.Volumes[1].ImageIssues == 0 {
+		t.Fatal("missing pending image status")
+	}
+	m.openForm("image")
+	m.form.fields[0].value = images[0].ID
+	m.form.fields[1].value = "no-text"
+	m.form.fields[2].value = "Synthetic rectangle has no text"
+	m.submitForm()
+	if done := finishTUITask(t, m); done.err != nil || m.snapshot.Volumes[1].ImageIssues != 0 {
+		t.Fatal("TUI image decision failed", done.err, m.snapshot)
 	}
 	// Provider form saves only the path and never needs credentials to open.
 	provider := filepath.Join(root, "provider.jsonc")

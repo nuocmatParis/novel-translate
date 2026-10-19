@@ -40,6 +40,8 @@ archives:
       - README.md
       - LICENSE
       - config.example.jsonc
+      - config.gemini.example.jsonc
+      - config.anthropic.example.jsonc
     name_template: >-
       {{ .ProjectName }}_{{ .Version }}_
       {{- title .Os }}_

@@ -55,9 +55,6 @@ func Write(source []byte, volume string, order int, g domain.Generation, opts Ex
 		if b.Kind == "image" {
 			n.Set("data-source-block", b.ID)
 			n.Set("data-source-page", b.Document)
-			if transcript, ok := opts.ImageTranscripts[b.ID]; ok && strings.TrimSpace(transcript) != "" {
-				insertImageTranscript(p.Trees[b.Document], n, transcript)
-			}
 			continue
 		}
 		u, ok := g.Units[b.ID]
@@ -94,6 +91,9 @@ func Write(source []byte, volume string, order int, g domain.Generation, opts Ex
 		}
 		n.Children = wrapper.Children
 		n.Set("data-source-block", b.ID)
+	}
+	if e := writeImageTranscripts(p, opts.ImageTranscripts); e != nil {
+		return nil, e
 	}
 	opf := p.Trees[p.Book.PackagePath]
 	repairMetadata(p)
@@ -501,6 +501,9 @@ func VerifyOutput(source, output []byte, volume string, order int, g domain.Gene
 			}
 		}
 	}
+	if len(options) > 0 {
+		r.Diagnostics = append(r.Diagnostics, verifyImageTranscripts(s, o, options[0].ImageTranscripts)...)
+	}
 	r.Structure = len(r.Diagnostics) == 0
 	if r.Accepted == r.Eligible && r.Eligible > 0 {
 		r.Semantic = "đã đối chiếu; không bảo đảm đúng nghĩa 100%"
@@ -604,20 +607,20 @@ func findPathToNode(root, target *Node) []*Node {
 	return nil
 }
 
-func insertImageTranscript(tree *Node, imgNode *Node, transcript string) {
+func insertImageTranscript(tree *Node, imgNode *Node, id, transcript string) error {
 	if tree == nil || imgNode == nil || strings.TrimSpace(transcript) == "" {
-		return
+		return errors.New("thiếu mapping hoặc bản dịch chữ trong ảnh: " + id)
 	}
 	path := findPathToNode(tree, imgNode)
 	if len(path) < 2 {
-		return
+		return errors.New("không tìm thấy vị trí ảnh: " + id)
 	}
 	var container *Node
 	var containerChild *Node
 	for i := len(path) - 2; i >= 0; i-- {
 		tag := local(path[i].Name)
 		switch tag {
-		case "body", "div", "section", "article", "figure":
+		case "body", "div", "section", "article", "figure", "li", "aside", "td", "th", "blockquote":
 			container = path[i]
 			containerChild = path[i+1]
 			break
@@ -627,16 +630,21 @@ func insertImageTranscript(tree *Node, imgNode *Node, transcript string) {
 		}
 	}
 	if container == nil {
-		container = path[len(path)-2]
-		containerChild = imgNode
+		return errors.New("không có container XHTML cho chú thích ảnh: " + id)
+	}
+	name := func(tag string) string {
+		if i := strings.IndexByte(container.Name, ':'); i >= 0 {
+			return container.Name[:i+1] + tag
+		}
+		return tag
 	}
 
 	div := &Node{
-		Name: "div",
-		Attr: []xml.Attr{{Name: xml.Name{Local: "class"}, Value: "translation-image-transcript"}},
+		Name: name("div"), NS: container.NS,
+		Attr: []xml.Attr{{Name: xml.Name{Local: "class"}, Value: "translation-image-transcript"}, {Name: xml.Name{Local: "data-source-image-transcript"}, Value: id}},
 	}
 	titleNode := &Node{
-		Name:     "div",
+		Name: name("div"), NS: container.NS,
 		Attr:     []xml.Attr{{Name: xml.Name{Local: "class"}, Value: "translation-image-transcript-title"}},
 		Children: []*Node{{Text: "Bản dịch chữ trong tranh:"}},
 	}
@@ -648,7 +656,7 @@ func insertImageTranscript(tree *Node, imgNode *Node, transcript string) {
 			continue
 		}
 		p := &Node{
-			Name:     "p",
+			Name: name("p"), NS: container.NS,
 			Children: []*Node{{Text: line}},
 		}
 		div.Children = append(div.Children, p)
@@ -662,10 +670,17 @@ func insertImageTranscript(tree *Node, imgNode *Node, transcript string) {
 		}
 	}
 	if idx >= 0 {
+		// Several inline images can share one paragraph. Keep their captions in
+		// source order rather than repeatedly inserting at the same position.
+		for idx+1 < len(container.Children) && container.Children[idx+1].Get("data-source-image-transcript") != "" {
+			idx++
+		}
 		newChildren := make([]*Node, 0, len(container.Children)+1)
 		newChildren = append(newChildren, container.Children[:idx+1]...)
 		newChildren = append(newChildren, div)
 		newChildren = append(newChildren, container.Children[idx+1:]...)
 		container.Children = newChildren
+		return nil
 	}
+	return errors.New("không tìm thấy container child cho ảnh: " + id)
 }

@@ -1,6 +1,7 @@
 package verify
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/voocel/ainovel-cli/internal/translation/domain"
@@ -79,6 +80,11 @@ func TestAssessImageAndGate(t *testing.T) {
 	if _, err := AssessImage(book, "b4", "transcript", "reason", "", "  ", nil); err == nil {
 		t.Fatal("expected error on transcript without text")
 	}
+	for _, invalid := range []string{"invalid\xff", "XML\x00control"} {
+		if _, err := AssessImage(book, "b4", "transcript", "reason", "", invalid, nil); err == nil {
+			t.Fatal("invalid transcript encoding accepted")
+		}
+	}
 	if _, err := AssessImage(book, "non-existent", "no-text", "reason", "", "", nil); err == nil {
 		t.Fatal("expected error on non-existent image ID")
 	}
@@ -113,5 +119,54 @@ func TestAssessImageAndGate(t *testing.T) {
 	}
 	if !foundReplaceMissing {
 		t.Fatalf("expected image-replace-missing issue for invalid replace decision, got: %+v", issues)
+	}
+}
+
+func TestImageAssetsRejectChangedFilesAndSharedResourceConflicts(t *testing.T) {
+	data := []byte(`<svg xmlns="http://www.w3.org/2000/svg"><rect width="10" height="10"/></svg>`)
+	book := domain.Book{SourceHash: "source", Resources: []domain.Resource{{Path: "OPS/image.svg", Hash: "original", MediaType: "image/svg+xml"}}, Blocks: []domain.Block{{ID: "a", Kind: "image", Resource: "OPS/image.svg"}, {ID: "b", Kind: "image", Resource: "OPS/image.svg"}}}
+	a, err := AssessImage(book, "a", "replace", "Đã kiểm tra", "edited.svg", "", data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := AssessImage(book, "b", "replace", "Đã kiểm tra", "edited.svg", "", data)
+	decisions := map[string]ImageDecision{"a": a, "b": b}
+	for _, tc := range []struct {
+		name string
+		read func(string) ([]byte, error)
+		bad  bool
+	}{
+		{"approved", func(string) ([]byte, error) { return data, nil }, false},
+		{"changed", func(string) ([]byte, error) { return append(data, ' '), nil }, true},
+		{"deleted", func(string) ([]byte, error) { return nil, errors.New("missing") }, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _, issues := ImageAssets(book, decisions, tc.read)
+			if (len(issues) > 0) != tc.bad {
+				t.Fatal(issues)
+			}
+		})
+	}
+	b.Disposition = "keep-original"
+	decisions["b"] = b
+	replacements, _, issues := ImageAssets(book, decisions, func(string) ([]byte, error) { return data, nil })
+	if len(issues) == 0 || issues[0].Code != "image-resource-conflict" {
+		t.Fatal("replacement silently overrides another occurrence", issues)
+	}
+	if len(replacements) != 0 {
+		t.Fatal("conflicting replacement would still be applied to preview")
+	}
+	if _, err := AssessImage(book, "a", "replace", "reason", "path-only.svg", "", nil); err == nil {
+		t.Fatal("replacement accepted without approved bytes")
+	}
+	a.ReplacementHash = ""
+	if len(ImageGate(book, map[string]ImageDecision{"a": a, "b": b})) == 0 {
+		t.Fatal("missing replacement hash passed gate")
+	}
+	bad := []byte("not an SVG")
+	a.ReplacementHash, b.ReplacementHash, b.Disposition = domain.Hash(bad), domain.Hash(bad), "replace"
+	_, _, issues = ImageAssets(book, map[string]ImageDecision{"a": a, "b": b}, func(string) ([]byte, error) { return bad, nil })
+	if len(issues) != 2 {
+		t.Fatal("wrong image format accepted", issues)
 	}
 }

@@ -2,6 +2,7 @@ package epub
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -91,5 +92,67 @@ func TestImageReplacementAndTranscriptExport(t *testing.T) {
 	actualBytes := outPkgReplace.Files[imageBlock.Resource]
 	if !bytes.Equal(actualBytes, replacementBytes) {
 		t.Fatalf("expected resource %s to contain replacement bytes", imageBlock.Resource)
+	}
+}
+
+func TestInlineImageTranscriptsArePreservedAndVerified(t *testing.T) {
+	files := testutil.Files()
+	files["OPS/a.xhtml"] = testutil.XHTML(`<h1 id="c1">第一章</h1><p id="b1">前<img src="image.svg"/>中<img src="image.svg"/>後。</p><ul><li>項目<img src="image.svg"/></li></ul>`)
+	raw := testutil.ZIP(files)
+	p, err := Read(raw, "v1", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := domain.Generation{Units: map[string]domain.Unit{}}
+	for _, b := range p.Book.Blocks {
+		if b.Disposition == "translate" {
+			g.Units[b.ID] = domain.Unit{ID: b.ID, SourceHash: b.SourceHash, Target: b.Source}
+		}
+	}
+	transcripts := map[string]string{}
+	var inlineIDs []string
+	for _, image := range imageOccurrences(p) {
+		if image.document == "OPS/a.xhtml" {
+			inlineIDs = append(inlineIDs, image.id)
+			transcripts[image.id] = fmt.Sprintf("Bản dịch ảnh số %d\nNội dung <đầy đủ> & chính xác.", len(inlineIDs))
+		}
+	}
+	if len(inlineIDs) != 3 {
+		t.Fatal("fixture must contain three inline images", inlineIDs)
+	}
+	opts := ExportOptions{Preview: true, ImageTranscripts: transcripts}
+	out, err := Write(raw, "v1", 1, g, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report, err := VerifyOutput(raw, out, "v1", 1, g, opts); err != nil {
+		t.Fatal(err, report.Diagnostics)
+	}
+	output, err := Read(out, "v1", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var actualIDs []string
+	output.Trees["OPS/a.xhtml"].Walk(func(n *Node) {
+		if id := n.Get("data-source-image-transcript"); id != "" {
+			actualIDs = append(actualIDs, id)
+		}
+	})
+	if strings.Join(actualIDs, "|") != strings.Join(inlineIDs, "|") {
+		t.Fatal("caption order changed", actualIDs, inlineIDs)
+	}
+	for _, replacement := range []string{"Nội dung khác", ""} {
+		changed := map[string]string{}
+		for path, data := range output.Files {
+			changed[path] = string(data)
+		}
+		changed["OPS/a.xhtml"] = strings.ReplaceAll(changed["OPS/a.xhtml"], "Bản dịch ảnh số 1", replacement)
+		if _, err := VerifyOutput(raw, testutil.ZIP(changed), "v1", 1, g, opts); err == nil {
+			t.Fatal("altered caption passed readback")
+		}
+	}
+	transcripts["missing:image"] = "Không được bỏ qua"
+	if _, err := Write(raw, "v1", 1, g, opts); err == nil {
+		t.Fatal("unknown image occurrence silently skipped")
 	}
 }

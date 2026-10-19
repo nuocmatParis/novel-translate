@@ -47,6 +47,7 @@ skill generate --workspace <path> --volume <id>
 skill resolve --workspace <path> --id <rule-id> --decision confirm|reject --reason <text>
 skill research --workspace <path> --volume <id> --term <text>
 image list --workspace <path> --volume <id>
+image export --workspace <path> --volume <id> [--directory <workspace-relative-path>]
 image assess --workspace <path> --volume <id> --id <occurrence-id> --disposition no-text|keep-original|replace|transcript --reason <evidence> [--file <path>] [--transcript <text>] [--transcript-file <path>]
 export --workspace <path> --volume <id> [--preview] [--from <chapter> --to <chapter>]
 
@@ -85,7 +86,7 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, options O
 	} else {
 		e = execute(ctx, args, stdout, stderr, options)
 	}
-	if e == nil {
+	if e == nil || errors.Is(e, flag.ErrHelp) {
 		return 0
 	}
 	fmt.Fprintln(stderr, "Lỗi:", e)
@@ -100,6 +101,10 @@ func printJSON(w io.Writer, v any) error {
 	return enc.Encode(v)
 }
 func execute(ctx context.Context, args []string, out, progress io.Writer, options Options) error {
+	if len(args) == 2 && (args[1] == "--help" || args[1] == "-h") {
+		fmt.Fprint(out, Help)
+		return nil
+	}
 	command := args[0]
 	args = args[1:]
 	sub := ""
@@ -339,6 +344,13 @@ func execute(ctx context.Context, args []string, out, progress io.Writer, option
 		}
 		return engine.SetScene(c, v, book, *id, *end, &domain.Position{Volume: *storyVolume, Chapter: *storyChapter, Block: *storyBlock}, *quote, *reason, *uncertain)
 	case "image":
+		if sub == "export" {
+			dest := *directory
+			if dest == "" {
+				dest = filepath.Join(v.Directory, "images", "source")
+			}
+			return exportImages(out, c, book, raw, dest)
+		}
 		var decisions map[string]verify.ImageDecision
 		imagePath := store.Path("volumes", v.ID, "image-decisions.json")
 		if e = state.ReadJSON(imagePath, &decisions); e != nil && !errors.Is(e, os.ErrNotExist) {
@@ -357,7 +369,7 @@ func execute(ctx context.Context, args []string, out, progress io.Writer, option
 			return printJSON(out, images)
 		}
 		if sub != "assess" {
-			return errors.New("image chỉ có list/assess")
+			return errors.New("image chỉ có list/export/assess")
 		}
 		transcriptText := *transcript
 		if *transcriptFile != "" {
@@ -600,20 +612,20 @@ func execute(ctx context.Context, args []string, out, progress io.Writer, option
 		if e = state.ReadJSON(store.Path("volumes", v.ID, "image-decisions.json"), &imageDecisions); e != nil && !errors.Is(e, os.ErrNotExist) {
 			return e
 		}
-		imageReplacements := map[string][]byte{}
-		imageTranscripts := map[string]string{}
-		for _, img := range verify.Images(book) {
-			if dec, ok := imageDecisions[img.ID]; ok {
-				if dec.Disposition == "replace" && dec.Replacement != "" {
-					b, err := os.ReadFile(c.ReadPath(dec.Replacement))
-					if err != nil {
-						return fmt.Errorf("không đọc được ảnh thay thế %s: %w", dec.Replacement, err)
-					}
-					imageReplacements[img.Resource] = b
-				} else if dec.Disposition == "transcript" && strings.TrimSpace(dec.Transcript) != "" {
-					imageTranscripts[img.ID] = dec.Transcript
-				}
+		imageBook := book
+		if len(chapters) > 0 {
+			selected, err := epub.Read(raw, v.ID, v.Order)
+			if err != nil {
+				return err
 			}
+			if err = selected.SelectScope(chapters); err != nil {
+				return err
+			}
+			imageBook = selected.Book
+		}
+		imageReplacements, imageTranscripts, imageIssues := verify.ImageAssets(imageBook, imageDecisions, func(path string) ([]byte, error) { return os.ReadFile(c.ReadPath(path)) })
+		if len(imageIssues) > 0 && !*preview {
+			return fmt.Errorf("%w: kiểm tra lại quyết định/file ảnh", engine.ErrUnresolved)
 		}
 		exportOptions := epub.ExportOptions{
 			Preview:           *preview,
@@ -720,7 +732,8 @@ func check(c workspace.Config, v workspace.Volume, book domain.Book, g domain.Ge
 	if e = state.ReadJSON(state.Store{Root: c.Root}.Path("volumes", v.ID, "image-decisions.json"), &imageDecisions); e != nil && !errors.Is(e, os.ErrNotExist) {
 		return r, e
 	}
-	r.Diagnostics = append(r.Diagnostics, verify.ImageGate(book, imageDecisions)...)
+	_, _, imageIssues := verify.ImageAssets(book, imageDecisions, func(path string) ([]byte, error) { return os.ReadFile(c.ReadPath(path)) })
+	r.Diagnostics = append(r.Diagnostics, imageIssues...)
 	for _, b := range book.Blocks {
 		if b.Disposition != "translate" {
 			continue
@@ -818,10 +831,15 @@ func status(out io.Writer, c workspace.Config, s state.Store, jsonOut bool) erro
 				}
 			}
 		}
-		entry := map[string]any{"id": v.ID, "generation": g.ID, "eligible": eligible, "translated": len(g.Units), "accepted": accepted, "issues": issues, "stale": stale, "stale_reasons": affected, "freshness_error": freshnessError, "chapters": book.Chapters, "batches": engine.PlanBatches(book.Chapters), "source_diagnostics": book.Diagnostics, "source_imported": se == nil}
+		var decisions map[string]verify.ImageDecision
+		if e := state.ReadJSON(s.Path("volumes", v.ID, "image-decisions.json"), &decisions); e != nil && !errors.Is(e, os.ErrNotExist) {
+			return e
+		}
+		_, _, imageIssues := verify.ImageAssets(book, decisions, func(path string) ([]byte, error) { return os.ReadFile(c.ReadPath(path)) })
+		entry := map[string]any{"id": v.ID, "generation": g.ID, "eligible": eligible, "translated": len(g.Units), "accepted": accepted, "issues": issues, "stale": stale, "stale_reasons": affected, "freshness_error": freshnessError, "chapters": book.Chapters, "batches": engine.PlanBatches(book.Chapters), "source_diagnostics": book.Diagnostics, "source_imported": se == nil, "images": len(verify.Images(book)), "image_issues": len(imageIssues), "image_diagnostics": imageIssues}
 		volumes = append(volumes, entry)
 		if !jsonOut {
-			fmt.Fprintf(out, "%s: %d/%d khối đã đối chiếu; %d stale; generation %s\n", v.ID, accepted, eligible, len(stale), g.ID)
+			fmt.Fprintf(out, "%s: %d/%d khối đã đối chiếu; %d stale; %d vấn đề ảnh; generation %s\n", v.ID, accepted, eligible, len(stale), len(imageIssues), g.ID)
 		}
 	}
 	if jsonOut {

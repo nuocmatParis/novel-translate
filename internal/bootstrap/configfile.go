@@ -24,6 +24,8 @@ func LoadConfigFile(path string) (Config, error) {
 	if e != nil {
 		return c, e
 	}
+	// Windows editors may save UTF-8 with a BOM. It is not part of JSON data.
+	b = bytes.TrimPrefix(b, []byte{0xef, 0xbb, 0xbf})
 	d := json.NewDecoder(bytes.NewReader(stripJSONComments(b)))
 	d.DisallowUnknownFields()
 	if e = d.Decode(&c); e != nil {

@@ -8,3 +8,7 @@ services:
       - ./config/provider.json:/root/.novel-translate/config.json:ro
       - ./tools/epubcheck:/tools/epubcheck:ro
     working_dir: /workspace
+    stdin_open: true
+    tty: true
+    environment:
+      NOVEL_TRANSLATE_API_KEY: ${NOVEL_TRANSLATE_API_KEY:-}

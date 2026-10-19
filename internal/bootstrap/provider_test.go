@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/voocel/agentcore"
@@ -39,6 +40,36 @@ func TestTranslationRolesAndConfig(t *testing.T) {
 	c.Roles["writer"] = RoleConfig{Provider: "local", Model: "fake"}
 	if e = c.ValidateBase(); e == nil {
 		t.Fatal("creative role still accepted")
+	}
+}
+
+func TestExampleProviderConfigsAndWindowsBOM(t *testing.T) {
+	t.Setenv("NOVEL_TRANSLATE_API_KEY", "test-key-not-a-secret")
+	for _, name := range []string{"config.example.jsonc", "config.gemini.example.jsonc", "config.anthropic.example.jsonc"} {
+		t.Run(name, func(t *testing.T) {
+			data, err := os.ReadFile(filepath.Join("..", "..", name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			text := strings.ReplaceAll(string(data), "YOUR_MODEL_ID", "sample-model")
+			text = strings.ReplaceAll(text, "YOUR_GEMINI_MODEL_ID", "sample-gemini-model")
+			text = strings.ReplaceAll(text, "YOUR_CLAUDE_MODEL_ID", "sample-claude-model")
+			text = strings.ReplaceAll(text, "https://YOUR_SERVICE_HOST/v1", "http://127.0.0.1:9999/v1")
+			path := filepath.Join(t.TempDir(), "provider.jsonc")
+			if err := os.WriteFile(path, append([]byte{0xef, 0xbb, 0xbf}, []byte(text)...), 0600); err != nil {
+				t.Fatal(err)
+			}
+			c, err := LoadConfigFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := c.ValidateBase(); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := NewModelSet(c); err != nil {
+				t.Fatal("provider adapter construction failed", err)
+			}
+		})
 	}
 }
 func TestBoundedContractsWithFakeGenerator(t *testing.T) {
