@@ -1,467 +1,502 @@
-# ainovel-cli (Bản Tiếng Việt & Đa Ngôn Ngữ)
+# novel-translate-cli
 
-<p align="center">
-  <strong>Công cụ dòng lệnh (CLI) sáng tác tiểu thuyết dài kỳ tự động bằng AI với kiến trúc Đa Agent (Multi-Agent)</strong>
-</p>
-
-<p align="center">
-  <img src="scripts/sample.gif" alt="ainovel-cli demo" width="800">
-  <img src="scripts/novel.png" alt="ainovel-cli bg" width="800">
-</p>
+> **Công cụ tự động dịch Light Novel từ tiếng Nhật sang tiếng Việt dành cho định dạng EPUB.**
+> Giữ nguyên 100% hình ảnh, mục lục, chú thích; nhớ xưng hô nhân vật xuyên suốt nhiều tập; tự động soi lỗi và xuất sách chuẩn đẹp cho mọi thiết bị đọc (Kindle, Kobo, iPad, điện thoại).
 
 ---
 
-## 🌟 Điểm Nổi Bật Của Bản Việt Hóa & Đa Ngôn Ngữ
+## Tính năng nổi bật
 
-- 🇻🇳 **Giao diện TUI Việt hóa 100%**: Từ Setup Wizard cài đặt ban đầu, màn hình chào mừng, thanh trạng thái, Activity stream trực tiếp, bảng quản lý Provider/Model (`/config`, `/model`) đến thông báo lỗi và phím tắt đều được dịch sang Tiếng Việt chuẩn mực, tự nhiên.
-- 🌐 **Tùy chọn Ngôn ngữ sáng tác truyện**: Hỗ trợ viết truyện bằng **Tiếng Việt (mặc định)** hoặc **Tiếng Trung nguyên bản** qua trường `"language": "vi"` hoặc `"language": "zh"` trong cấu hình.
-- 🦙 **Tích hợp sẵn Ollama Local**: Hỗ trợ chạy 100% offline, miễn phí không tốn tiền API với các model mã nguồn mở chạy trên GPU nội bộ (Qwen 2.5 / 3.5, Llama, v.v.).
-- ✍️ **Bộ Prompt song ngữ & Văn phong chống AI sáo rỗng**: 14 prompt hệ thống được tinh chỉnh kỹ lưỡng, kèm file quy chuẩn văn phong tiểu thuyết Tiếng Việt (`assets/voice.md`) giúp hành văn sống động, gãy gọn, có chiều sâu, bài trừ các mẫu câu sáo rỗng của AI.
-- 🚀 **Đồng bộ toàn diện Upstream mới nhất**: Sở hữu đầy đủ kiến trúc Đa Agent (`Coordinator` → `Architect` → `Writer` → `Editor` → `Arbiter`), Prompt Caching 3 tầng, quy hoạch cuộn 2 tầng (Rolling planning), điểm phục hồi step-level, và toàn bộ 14 lệnh slash commands.
-
----
-
-## 📑 Mục Lục
-1. [Yêu Cầu Hệ Thống](#1-yêu-cầu-hệ-thống)
-2. [Cài Đặt & Khởi Chạy Nhanh](#2-cài-đặt--khởi-chạy-nhanh)
-3. [Tùy Chọn Ngôn Ngữ Sáng Tác](#3-tùy-chọn-ngôn-ngữ-sáng-tác)
-4. [Cấu Hình Nhà Cung Cấp AI (LLM)](#4-cấu-hình-nhà-cung-cấp-ai-llm)
-   - [Dùng Ollama Cục Bộ (100% Offline)](#dùng-ollama-cục-bộ-100-offline)
-   - [Dùng Cloud API (OpenRouter, Gemini, Claude, OpenAI, DeepSeek)](#dùng-cloud-api-openrouter-gemini-claude-openai-deepseek)
-   - [Phối hợp nhiều Model theo vai trò](#phối-hợp-nhiều-model-theo-vai-trò)
-5. [Hướng Dẫn Sử Dụng & Bảng Lệnh TUI](#5-hướng-dẫn-sử-dụng--bảng-lệnh-tui)
-   - [Khởi động TUI & Chế độ sáng tác](#khởi-động-tui--chế-độ-sáng-tác)
-   - [Danh sách Lệnh Điều Khiển (Slash Commands)](#danh-sách-lệnh-điều-khiển-slash-commands)
-   - [Can thiệp thời gian thực (Steer)](#can-thiệp-thời-gian-thực-steer)
-   - [Chế độ chạy ngầm (Headless)](#chế-độ-chạy-ngầm-headless)
-6. [Quản Lý Nhiều Bộ Truyện Độc Lập](#6-quản-lý-nhiều-bộ-truyện-độc-lập)
-7. [Tính Năng Nâng Cao](#7-tính-năng-nâng-cao)
-   - [Chẩn đoán truyện (`/diag`)](#chẩn-đoán-truyện-diag)
-   - [Mô phỏng văn phong (`/simulate`)](#mô-phỏng-văn-phong-simulate)
-   - [Đồng bộ sửa đổi thủ công (`/sync`)](#đồng-bộ-sửa-đổi-thủ-công-sync)
-   - [Nhập truyện bên ngoài (`/import`)](#nhập-truyện-bên-ngoài-import)
-   - [Xuất truyện hoàn chỉnh (`/export` TXT/EPUB)](#xuất-truyện-hoàn-chỉnh-export-txtepub)
-8. [Kiến Trúc Kỹ Thuật & Nguyên Lý Hoạt Động](#8-kiến-trúc-kỹ-thuật--nguyên-lý-hoạt-động)
-   - [Kiến trúc Đa Agent](#kiến-trúc-đa-agent)
-   - [Quy hoạch cuộn 2 tầng (Rolling Planning)](#quy-hoạch-cuộn-2-tầng-rolling-planning)
-   - [Quản lý & Nén ngữ cảnh 4 cấp](#quản-lý--nén-ngữ-cảnh-4-cấp)
-   - [Đánh giá chất lượng 7 chiều của Editor](#đánh-giá-chất-lượng-7-chiều-của-editor)
-   - [Khôi phục điểm ngắt (Step-level Recovery)](#khôi-phục-điểm-ngắt-step-level-recovery)
-9. [Cấu Trúc Thư Mục Đầu Ra](#9-cấu-trúc-thư-mục-đầu-ra)
-10. [Tùy Biến Văn Phong & Quy Tắc Cá Nhân](#10-tùy-biến-văn-phong--quy-tắc-cá-nhân)
-11. [Tech Stack & License](#11-tech-stack--license)
+- **Bảo toàn sách gốc**: Giữ nguyên vị trí tranh minh họa, tranh đôi, mục lục và các liên kết chú thích hai chiều.
+- **Nhớ cách xưng hô nhân vật**: Không bị tình trạng đầu truyện xưng "tôi", cuối truyện xưng "anh/em"; không để lộ trước tình tiết của các tập tương lai.
+- **AI Reviewer tự động soi lỗi**: Tự động phát hiện khi câu dịch bị bỏ sót ý, bịa thêm chi tiết hoặc sai đại từ xưng hô, sau đó tự động sửa lại.
+- **Xử lý linh hoạt chữ trong ảnh**: Hỗ trợ giữ nguyên ảnh, thay bằng bìa tiếng Việt đã edit, hoặc tự chèn bảng dịch chú thích bên dưới tranh.
+- **Cho phép bạn tự sửa tay**: Tự do mở file chữ ra sửa câu cú theo ý thích; AI sẽ ghi nhớ và không bao giờ ghi đè lên câu bạn đã sửa.
+- **An toàn tuyệt đối**: Mất mạng, sập nguồn giữa chừng chỉ cần bấm tiếp tục (`resume`), không phải dịch lại từ đầu và không bị tốn tiền API trùng lặp.
+- **Theo dõi chi phí token**: Lệnh `status` hiển thị số request đã gửi, chi phí USD đã biết và số request chưa rõ chi phí, giúp bạn kiểm soát ngân sách khi dịch trọn một tập sách.
 
 ---
 
-## 1. Yêu Cầu Hệ Thống
+## Cách hoạt động (Dành cho người mới)
 
-- **Khuyến nghị nhất**: [Docker](https://www.docker.com/) & Docker Desktop (Windows / macOS / Linux).
-- **Hoặc chạy từ Source**: Máy tính đã cài đặt [Go](https://go.dev/) ≥ 1.21.
-- **LLM**: 
-  - Máy có GPU (Nvidia VRAM ≥ 12GB) nếu muốn chạy Ollama cục bộ với model Qwen 2.5 / 3.5.
-  - Hoặc API Key từ OpenRouter, Anthropic, Google Gemini, OpenAI, DeepSeek.
-
----
-
-## 2. Cài Đặt & Khởi Chạy Nhanh
-
-### Bước 1: Clone Repo & Chuẩn Bị Thư Mục
-```bash
-git clone https://github.com/kentjuno/ainovel-cli.git
-cd ainovel-cli
-
-# Tạo thư mục chứa cấu hình và thư mục chứa truyện
-mkdir -p config workspace novels
+```text
+[File EPUB Nhật gốc]
+       |  (1. Phân tích sách thành từng câu văn & tranh ảnh)
+       v
+[AI Dịch Thuật] --> [AI Biên Tập Soi Lỗi & Tự Sửa]
+       |  (2. Bạn có thể mở file đọc thử & sửa tay nếu thích)
+       v
+[Xử lý tranh ảnh: Bìa sách, tranh có chữ]
+       |  (3. Tự động đóng gói & chuyển chữ sang đọc ngang LTR)
+       v
+[File EPUB Tiếng Việt Hoàn Chỉnh] (Mở đọc ngay trên Kindle, Kobo, Apple Books...)
 ```
 
-### Bước 2: Build Docker Image
-```bash
-docker compose build
-```
-*(Nếu build từ source Go: `go build -o ainovel-cli ./cmd/ainovel-cli`)*
-
-### Bước 3: Khởi Chạy TUI
-```bash
-docker compose run --rm ainovel
-```
-*(Nếu chạy từ file binary: `./ainovel-cli`)*
-
-Lần đầu chạy, hệ thống sẽ tự động bật **Setup Wizard tương tác bằng Tiếng Việt** để bạn chọn Provider, nhập API Key/Base URL, chọn Model và Ngôn ngữ sáng tác.
-
 ---
 
-## 3. Tùy Chọn Ngôn Ngữ Sáng Tác
+## Hướng dẫn cài đặt
 
-Trong file cấu hình `config/config.json`, bạn có thể chỉ định trường `"language"`:
-- `"language": "vi"` (**Mặc định**): Toàn bộ dàn ý, nhân vật, bối cảnh thế giới, quy chuẩn văn phong chống AI và nội dung từng chương sẽ được sinh ra bằng **Tiếng Việt** tự nhiên, mượt mà.
-- `"language": "zh"`: Nội dung truyện được sinh ra bằng **Tiếng Trung** nguyên bản (phù hợp nếu bạn viết truyện Trung hoặc muốn dùng công cụ dịch sau).
+Bạn chỉ cần máy tính chạy **Windows, macOS hoặc Linux**.
 
-> 💡 **Ghi chú**: Bảng điều khiển TUI, thanh trạng thái, menu và các thông báo lỗi luôn hiển thị **100% bằng Tiếng Việt**.
-
----
-
-## 4. Cấu Hình Nhà Cung Cấp AI (LLM)
-
-File cấu hình đặt tại `config/config.json`:
-
-### Dùng Ollama Cục Bộ (100% Offline)
-
-1. **Tạo model trên Ollama với Context Window lớn (65536 tokens)**:
-   - Trên PowerShell (Windows):
-     ```powershell
-     @"
-     FROM qwen2.5:14b
-     PARAMETER num_ctx 65536
-     "@ | Out-File -FilePath "$env:TEMP\ainovel.Modelfile" -Encoding ascii
-
-     ollama create ainovel-qwen -f "$env:TEMP\ainovel.Modelfile"
-     ```
-2. **Nội dung `config/config.json`**:
-   ```json
-   {
-     "language": "vi",
-     "provider": "ollama",
-     "model": "ainovel-qwen",
-     "providers": {
-       "ollama": {
-         "base_url": "http://host.docker.internal:11434/v1",
-         "stream_idle_timeout": "300s"
-       }
-     },
-     "context_window": 65536,
-     "thinking": "off",
-     "style": "default"
-   }
+### Cách 1: Dùng file chạy sẵn (Đơn giản nhất cho Windows)
+1. Tải file `novel-translate-cli.exe` về máy tính của bạn.
+2. Mở cửa sổ dòng lệnh (**PowerShell** trên Windows hoặc **Terminal** trên Mac/Linux) tại thư mục chứa file và gõ:
+   ```powershell
+   .\novel-translate-cli.exe --help
    ```
-   > ⚠️ **Lưu ý mạng Docker**: Khi chạy bằng Docker, bắt buộc dùng `http://host.docker.internal:11434/v1`. Nếu chạy binary trực tiếp trên máy không qua Docker, dùng `http://localhost:11434/v1`.
 
----
-
-### Dùng Cloud API (OpenRouter, Gemini, Claude, OpenAI, DeepSeek)
-
-#### OpenRouter:
-```json
-{
-  "language": "vi",
-  "provider": "openrouter",
-  "model": "anthropic/claude-3.5-sonnet",
-  "providers": {
-    "openrouter": {
-      "api_key": "sk-or-v1-YOUR_OPENROUTER_API_KEY"
-    }
-  },
-  "context_window": 128000,
-  "thinking": "off",
-  "style": "default"
-}
-```
-
-#### Google Gemini:
-```json
-{
-  "language": "vi",
-  "provider": "gemini",
-  "model": "gemini-2.5-pro",
-  "providers": {
-    "gemini": {
-      "api_key": "YOUR_GEMINI_API_KEY"
-    }
-  },
-  "context_window": 1000000,
-  "style": "default"
-}
-```
-
-#### DeepSeek API:
-```json
-{
-  "language": "vi",
-  "provider": "deepseek",
-  "model": "deepseek-chat",
-  "providers": {
-    "deepseek": {
-      "api_key": "YOUR_DEEPSEEK_API_KEY"
-    }
-  },
-  "context_window": 64000,
-  "style": "default"
-}
+### Cách 2: Tự biên dịch từ mã nguồn (Nếu máy đã cài Go 1.25 trở lên)
+```sh
+go build -trimpath -o novel-translate-cli ./cmd/novel-translate-cli
 ```
 
 ---
 
-### Phối hợp nhiều Model theo vai trò
+## Hướng dẫn sử dụng từ A đến Z
 
-Hệ thống cho phép gán model mạnh (Claude 3.5 Sonnet / DeepSeek Reasoner) làm **Biên tập / Kiến trúc sư** và model rẻ/nhanh (DeepSeek Chat / Ollama) làm **Người viết**:
+### Bước 1: Chuẩn bị API Key (Chìa khóa để AI làm việc)
 
-```json
+Bạn có thể dùng **Google Gemini** (khuyên dùng vì vừa thông minh, dịch nhanh lại có gói miễn phí/siêu rẻ) hoặc **OpenAI (ChatGPT)**:
+- **Lấy key Gemini**: Vào [Google AI Studio](https://aistudio.google.com/), đăng nhập tài khoản Google và bấm **Get API Key**.
+- Mở PowerShell và gõ lệnh sau để lưu key vào máy:
+  ```powershell
+  $env:NOVEL_TRANSLATE_API_KEY = "dán_mã_api_key_của_bạn_vào_đây"
+  ```
+
+### Bước 2: Tạo file cấu hình AI (`provider.jsonc`)
+
+Tạo một file văn bản tên là `provider.jsonc` (ví dụ lưu tại `D:/provider.jsonc` hoặc ngay trong thư mục làm việc):
+
+```jsonc
 {
-  "language": "vi",
-  "provider": "ollama",
-  "model": "ainovel-qwen",
+  "provider": "gemini-service",
+  "model": "gemini-2.5-flash",
   "providers": {
-    "ollama": { "base_url": "http://host.docker.internal:11434/v1" },
-    "openrouter": { "api_key": "sk-or-v1-YOUR_KEY" }
+    "gemini-service": {
+      "type": "gemini",
+      "api_key_env": "NOVEL_TRANSLATE_API_KEY",
+      "models": [{"name": "gemini-2.5-flash", "context_window": 1000000}]
+    }
   },
   "roles": {
-    "architect": { "provider": "openrouter", "model": "anthropic/claude-3.5-sonnet" },
-    "editor": { "provider": "openrouter", "model": "anthropic/claude-3.5-sonnet" },
-    "writer": { "provider": "ollama", "model": "ainovel-qwen" }
-  },
-  "context_window": 65536,
-  "style": "default"
+    // Model chuyên dịch văn
+    "translation": {"provider": "gemini-service", "model": "gemini-2.5-flash"},
+    // Model chuyên soi lỗi và kiểm tra ngữ cảnh
+    "translation_review": {"provider": "gemini-service", "model": "gemini-2.5-flash"},
+    // Model tra cứu thông tin
+    "translation_research": {"provider": "gemini-service", "model": "gemini-2.5-flash"}
+  }
 }
 ```
 
----
+### Bước 3: Bắt đầu dịch cuốn sách đầu tiên!
 
-## 5. Hướng Dẫn Sử Dụng & Bảng Lệnh TUI
+Trong các ví dụ bên dưới, thay `<ten_bo>` bằng tên bộ truyện bạn muốn (ví dụ `rezero`, `sao`, `mushoku`...) và `<duong_dan_epub>` bằng đường dẫn tới file EPUB gốc tiếng Nhật của bạn.
 
-### Khởi động TUI & Chế độ sáng tác
+#### 1. Khởi tạo dự án cho bộ truyện
+```powershell
+.\novel-translate-cli.exe init ./workspace/<ten_bo> --series <ten_bo> --title "Tên bộ truyện"
+```
+Lệnh này sẽ tự động tạo thư mục workspace với đầy đủ cấu trúc chuẩn (xem mục "Cấu trúc Workspace" bên dưới).
 
-Chạy lệnh:
-```bash
-docker compose run --rm ainovel
+#### 2. Thêm tập sách tiếng Nhật vào dự án
+```powershell
+.\novel-translate-cli.exe volume add --workspace ./workspace/<ten_bo> --id vol01 --order 1 --source "<duong_dan_epub>"
 ```
 
-Tại màn hình chào mừng:
-- **Phím Tab**: Chuyển đổi giữa 2 chế độ:
-  - **Bắt đầu nhanh**: Nhập 1 câu tóm tắt ý tưởng (ví dụ: *"Tiểu thuyết tiên hiệp phàm nhân, nhân vật chính cơ trí, quyết đoán"*), AI tự động lập dàn ý và sáng tác ngay.
-  - **Đồng sáng tác (Co-create)**: AI sẽ trao đổi cùng bạn từng bước để làm rõ thiết lập thế giới, nhân vật, cốt truyện trước khi viết.
-- **Phím Enter**: Bắt đầu quá trình sáng tác.
-- **Phím `/`**: Mở thanh tìm kiếm và thực thi lệnh nhanh (Slash Commands).
-- **`Ctrl+C` 2 lần**: Lưu an toàn toàn bộ trạng thái và thoát ra.
+#### 3. Khai báo file cấu hình AI
+Mở file `workspace/<ten_bo>/workspace.yaml` bằng Notepad, thêm đường dẫn file cấu hình ở Bước 2:
+```yaml
+provider_config: D:/provider.jsonc
+```
+
+#### 4. (Rất khuyên dùng) Thiết lập bảng xưng hô & tên nhân vật
+Mở file `workspace/<ten_bo>/Skills/SKILL.md` bằng Notepad và điền bảng tên nhân vật, cách xưng hô bạn muốn AI dịch. Xem hướng dẫn chi tiết ở mục "Thiết lập Quy ước Xưng hô & Tên nhân vật" bên dưới.
+
+#### 5. Phân tích nội dung cuốn sách
+```powershell
+.\novel-translate-cli.exe import --workspace ./workspace/<ten_bo> --volume vol01
+```
+
+#### 6. Bấm dịch!
+```powershell
+.\novel-translate-cli.exe translate --workspace ./workspace/<ten_bo> --volume vol01
+```
+Hệ thống sẽ tự động bóc tách từng chương, gọi model dịch, chạy luồng review đối chiếu, lưu checkpoint và liên tục thông báo tiến độ trực tiếp trên màn hình.
 
 ---
 
-### Danh sách Lệnh Điều Khiển (Slash Commands)
+## Cấu trúc Thư mục Workspace & Thiết lập Quy ước (Skills)
 
-Khi đang ở trong giao diện TUI, bạn có thể gõ `/` để mở bảng chọn lệnh:
+### Thư mục Workspace trông như thế nào?
 
-| Lệnh | Mô tả |
-| :--- | :--- |
-| `/help` | Mở bảng trợ giúp tra cứu danh sách lệnh và phím tắt |
-| `/model` | Chuyển đổi Model hoặc mức độ suy luận (reasoning/thinking) |
-| `/config` | Quản lý cấu hình Provider, Model ID, API Key, Base URL, Context Window |
-| `/diag` | Xem báo cáo chẩn đoán toàn diện về sức khỏe, tiến độ và chất lượng truyện |
-| `/review [on\|off]` | Bật/tắt chế độ nghiệm thu từng chương (dừng lại sau mỗi chương để bạn duyệt) |
-| `/next` | Phê duyệt cho phép viết chương tiếp theo (khi ở chế độ nghiệm thu) |
-| `/start <tệp>` | Đọc tệp dàn ý / ý tưởng bên ngoài để bắt đầu truyện mới |
-| `/import <tệp>` | Nhập tiểu thuyết từ bên ngoài vào để AI phân tích và viết tiếp |
-| `/reopen <hướng>` | Viết tiếp tập mới sau khi tác phẩm đã hoàn thành |
-| `/cocreate` | Tạm dừng để vào chế độ đồng sáng tác định hướng giai đoạn tiếp theo |
-| `/simulate` | Phân tích các file văn mẫu trong `./simulate` để mô phỏng văn phong |
-| `/importsim <file>` | Nhập hồ sơ mô phỏng văn phong từ tệp json |
-| `/sync` | Đồng bộ các chỉnh sửa thủ công của bạn trên các file chương vào hệ thống |
-| `/export` | Xuất tác phẩm thành file văn bản hoàn chỉnh (.txt hoặc .epub) |
-
----
-
-### Can thiệp thời gian thực (Steer)
-
-Trong lúc AI đang viết, bạn có thể nhập trực tiếp ý kiến sửa đổi vào ô nhập liệu bên dưới bất cứ lúc nào mà **không cần tạm dừng hay khởi động lại**:
+Sau khi bạn chạy lệnh `init`, thư mục dự án sẽ có cấu trúc như sau:
 
 ```text
-❯ Cho nhân vật phụ A hy sinh ở cuối chương này để tạo bước ngoặt cảm xúc lớn
+workspace/<ten_bo>/
+├── workspace.yaml              # File cấu hình chính (khai báo AI, danh sách tập, font...)
+├── Skills/                     # Nơi quản lý quy ước & phong cách dịch thuật
+│   ├── SKILL.md                # [Quan trọng] Quy ước chính: tên nhân vật, cách xưng hô, thuật ngữ
+│   ├── core/                   # Các quy tắc cốt lõi mặc định đã cài sẵn:
+│   │   ├── jp-vn-translation/SKILL.md       # Quy tắc dịch Nhật sang Việt tự nhiên
+│   │   ├── dialogue-and-honorifics/SKILL.md # Quy tắc xử lý đại từ, kính ngữ (-san, -kun, -chan...)
+│   │   └── translation-review/SKILL.md      # Quy tắc dành cho AI Reviewer soi lỗi
+│   ├── imported/               # Nơi lưu trữ tài liệu nếu bạn dùng lệnh skill import từ file ngoài
+│   └── rules.json              # Danh sách quy tắc dịch thuật đã được chốt
+├── vol01_translation/          # Bản thảo của tập sách (tự sinh ra trong quá trình dịch)
+│   └── chapters/               # Các file Markdown từng chương (vd: vol01-c001.md)
+├── Output/                     # Thư mục chứa file sách EPUB tiếng Việt sau khi xuất (export)
+└── .translation_work/          # Dữ liệu nội bộ (checkpoint, cache, trạng thái review - không cần đụng vào)
 ```
 
-Sau khi nhấn Enter, Arbiter sẽ tự động đánh giá phạm vi ảnh hưởng và điều phối Writer/Editor cập nhật mạch truyện.
+### Thiết lập Quy ước Xưng hô & Tên nhân vật (`Skills/SKILL.md`)
 
+File `Skills/SKILL.md` chính là **"bộ não ghi nhớ"** của bộ truyện. Khi dịch và khi soi lỗi, cả **AI Dịch** lẫn **AI Reviewer** đều bắt buộc phải tuân theo file này với độ ưu tiên cao nhất (`priority: 100`).
+
+Mở file `workspace/<ten_bo>/Skills/SKILL.md` bằng Notepad và soạn thảo. Ví dụ cho một bộ truyện giả định:
+
+```markdown
 ---
+id: ten_bo_truyen
+priority: 100
+---
+# Quy ước dịch bộ truyện
 
-### Chế độ chạy ngầm (Headless)
+## 1. Tên nhân vật (Nhật -> Việt)
+- 田中太郎 -> Tanaka Tarou
+- 鈴木花子 -> Suzuki Hanako
+- リナ -> Rina
 
-Dành cho việc chạy tự động trên VPS, Server hoặc CI:
-```bash
-# Bắt đầu truyện mới
-docker compose run --rm ainovel --headless --prompt "Tiểu thuyết huyền nghi đô thị phá án"
+## 2. Bảng xưng hô nhân vật (Rất quan trọng)
+- Tarou gọi Hanako: xưng "tôi - cô ấy", khi thân thiết xưng "tớ - cậu"
+- Hanako gọi Tarou: xưng "tôi - anh ấy"
+- Rina: tự xưng "ta", gọi người khác "ngươi"
 
-# Viết tiếp truyện đang dở trong thư mục hiện tại
-docker compose run --rm ainovel --headless
+## 3. Thuật ngữ & Địa danh
+- 王国 -> Vương quốc
+- 魔法 -> Ma pháp
+- 勇者 -> Dũng giả
 ```
 
----
+**Lợi ích khi có file SKILL.md:**
+- Cho dù bộ truyện dài hàng chục tập, AI vẫn nhớ chính xác ai gọi ai như thế nào, không bao giờ bị lẫn lộn xưng hô giữa các tập.
+- Tên nhân vật và thuật ngữ luôn đồng nhất 100% từ đầu đến cuối sách.
 
-## 6. Quản Lý Nhiều Bộ Truyện Độc Lập
+### Nạp nhanh ghi chú có sẵn từ bên ngoài (`skill import`)
 
-Mặc định output sẽ lưu vào thư mục `workspace/`. Để viết nhiều bộ truyện khác nhau mà không bị xung đột, hãy đặt biến môi trường `NOVEL_DIR`:
+Nếu bạn đã có sẵn file ghi chú/glossary từ trước, không cần chép tay lại, chỉ cần gõ:
 
 ```powershell
-# Trên Windows PowerShell:
-$env:NOVEL_DIR = ".\novels\tien-hiep-ky"
-docker compose run --rm ainovel
-
-# Viết bộ truyện khác:
-$env:NOVEL_DIR = ".\novels\do-thi-di-nang"
-docker compose run --rm ainovel
+.\novel-translate-cli.exe skill import --workspace ./workspace/<ten_bo> --source "D:/glossary.md"
 ```
 
-Cấu trúc thư mục đầu ra của mỗi truyện:
-```text
-novels/<tên-truyện>/output/novel/
-├── chapters/            # Các chương hoàn chỉnh đã duyệt (.md)
-├── drafts/              # Bản nháp và dàn ý chi tiết từng chương
-├── reviews/             # Báo cáo đánh giá của Editor
-├── summaries/           # Tóm tắt từng Cung và Tập
-├── premise.md           # Ý tưởng & tiền đề cốt truyện
-├── characters.md        # Hồ sơ thiết lập nhân vật
-├── world_rules.md       # Thiết lập quy tắc thế giới
-└── meta/                # Checkpoint, tiến độ, nhật ký token
+Hệ thống sẽ tự động phân tích và nạp toàn bộ thuật ngữ vào thư mục `Skills/imported/` của dự án.
+
+Nếu file ghi chú chỉ áp dụng cho một số tập nhất định, dùng cờ `--from-volume` và `--until-volume` (cận trên không bao gồm):
+```sh
+novel-translate-cli skill import --workspace W --source ./notes_vol26.md --from-volume 26 --until-volume 28
+```
+
+Xem danh sách tất cả các kỹ năng đang được áp dụng:
+```powershell
+.\novel-translate-cli.exe skill list --workspace ./workspace/<ten_bo>
 ```
 
 ---
 
-## 7. Tính Năng Nâng Cao
+## Đọc thử & Tự sửa tay theo ý thích (Tùy chọn)
 
-### Chẩn đoán truyện (`/diag`)
-Gõ `/diag` trong TUI để hệ thống tự động kiểm tra toàn bộ truyện theo 4 chiều:
-- **Tiến trình**: Phát hiện vòng lặp viết lại, kẹt lệnh can thiệp, nhảy số chương.
-- **Chất lượng**: Theo dõi điểm số đánh giá, tỷ lệ tuân thủ cốt truyện, độ dài chương bất thường.
-- **Quy hoạch**: Kiểm tra các nút thắt/phục bút bị bỏ quên, dàn ý cạn kiệt, thiếu tóm tắt.
-- **Ngữ cảnh**: Nhân vật bị mất tích, đứt gãy dòng thời gian.
+Sau khi dịch xong (hoặc dịch được vài chương), bạn có thể mở các file bản thảo ra đọc:
+- Đường dẫn: `workspace/<ten_bo>/vol01_translation/chapters/vol01-c001.md`
+- Bạn có thể mở file này bằng bất kỳ ứng dụng nào (Notepad, VS Code, Word, Obsidian...).
+- Sửa văn bản giữa `<!-- unit:ID -->` và `<!-- /unit -->` trong file; giữ nguyên ID, thứ tự và tokens.
+- Sau khi lưu file, gõ lệnh sau để cập nhật vào hệ thống:
+  ```powershell
+  .\novel-translate-cli.exe sync --workspace ./workspace/<ten_bo> --volume vol01
+  ```
+Những câu bạn đã sửa tay sẽ được hệ thống đánh dấu bảo vệ vĩnh viễn, AI sẽ không bao giờ ghi đè lên nữa!
 
-### Mô phỏng văn phong (`/simulate`)
-Đặt các file văn mẫu (truyện của tác giả bạn yêu thích) vào thư mục `simulate/` rồi gõ `/simulate`. AI sẽ phân tích nhịp điệu, cách dùng từ, cấu trúc câu và tạo hồ sơ mô phỏng để áp dụng vào truyện của bạn.
+Nếu bạn muốn dịch lại một số đoạn sau khi sửa quy ước hoặc chỉnh scene:
+```sh
+novel-translate-cli retranslate plan --workspace W --volume vol01
+novel-translate-cli retranslate apply --workspace W --plan PLAN_ID
+```
 
-### Đồng bộ sửa đổi thủ công (`/sync`)
-Nếu bạn mở file `chapters/05.md` ra chỉnh sửa câu chữ trực tiếp, gõ `/sync` trong TUI. Hệ thống sẽ quét qua SHA-256, tự động cập nhật lại tóm tắt, trạng thái nhân vật và phục bút mà không làm hỏng tiến trình sáng tác.
-
-### Nhập truyện bên ngoài (`/import`)
-Gõ `/import ./truyen_cu.txt`. Hệ thống sẽ:
-1. Nhận diện ranh giới từng chương.
-2. Trích xuất thiết lập nhân vật, thế giới và dòng sự kiện.
-3. Tổng hợp dàn ý và sẵn sàng viết tiếp các chương mới liền mạch.
-
-### Xuất truyện hoàn chỉnh (`/export` TXT/EPUB)
-Gõ `/export` trong TUI hoặc chỉ định tham số:
-```text
-/export ./xuat_ban/truyen_full.txt
-/export ./xuat_ban/truyen_ebook.epub
-/export from=1 to=50 ./tap_1.epub
+Nếu bạn quyết định giữ một bản dịch sau khi xem vấn đề mà reviewer nêu:
+```sh
+novel-translate-cli review --workspace W --volume vol01 --keep BLOCK_ID --reason "Căn cứ quyết định"
 ```
 
 ---
 
-## 8. Kiến Trúc Kỹ Thuật & Nguyên Lý Hoạt Động
+## Xử lý tranh ảnh trong sách
 
-### Kiến trúc Đa Agent
-
-```
-┌─────────────────────────────────────────────────┐
-│              Host / Engine (Xác định)            │
-│  Đọc Store → Route → Chạy Worker → Lặp chu trình │
-│  Khởi động / Can thiệp / Xử lý kẹt → Arbiter     │
-└────┬──────────┬──────────┬─────────────┬────────┘
-     │          │          │             │
- ┌───▼────┐ ┌───▼───┐ ┌────▼────┐   ┌────▼────┐
- │Architect│ │Writer │ │ Editor  │   │ Arbiter │
- │(LLM Vòng)│ │(LLM Vòng)│ │(LLM Vòng)│   │(LLM Hàm)│
- └───┬────┘ └───┬───┘ └────┬────┘   └─────────┘
-     └──────────┼──────────┘
-                │ Gọi Tools (IO + Checkpoint)
-┌───────────────▼─────────────────────────────────┐
-│                   Store                         │
-│  Tiến độ / Checkpoints / Dàn ý / Bản thảo / ... │
-└─────────────────────────────────────────────────┘
+Trước khi xuất file sách cuối cùng, hãy kiểm tra danh sách ảnh:
+```powershell
+.\novel-translate-cli.exe image list --workspace ./workspace/<ten_bo> --volume vol01
 ```
 
-| Vai trò | Trách nhiệm | Công cụ sử dụng |
-| :--- | :--- | :--- |
-| **Arbiter** | Trọng tài ngữ nghĩa: chọn planner, phân luồng can thiệp, giải quyết bế tắc | Không có (Gọi LLM đơn, trả về quyết định cấu trúc) |
-| **Architect** | Kiến trúc sư: sinh tên truyện, tóm tắt, tiền đề, dàn ý, hồ sơ nhân vật, quy tắc thế giới | `novel_context`, `save_book`, `save_foundation` |
-| **Writer** | Người viết: tự chủ lên kế hoạch chương, viết nháp, tự kiểm tra và bàn giao | `novel_context`, `read_chapter`, `plan_chapter`, `draft_chapter`, `check_consistency`, `commit_chapter` |
-| **Editor** | Biên tập viên: đọc bản thảo, đánh giá chất lượng 7 chiều, lập tóm tắt cung/tập | `novel_context`, `read_chapter`, `save_review`, `save_arc_summary`, `save_volume_summary` |
+Mọi ảnh trong sách đều phải có quyết định hợp lệ trước khi chạy lệnh `export` cuối cùng. Hệ thống hỗ trợ 4 kiểu xử lý:
+
+**1. Ảnh thuần minh họa (không có chữ):**
+```powershell
+.\novel-translate-cli.exe image assess --workspace W --volume vol01 --id ID_ANH --disposition no-text --reason "Tranh đen trắng, không có chữ"
+```
+
+**2. Ảnh có chữ nhưng giữ nguyên bản gốc** (ví dụ chữ ký tác giả, logo):
+```powershell
+.\novel-translate-cli.exe image assess --workspace W --volume vol01 --id ID_ANH --disposition keep-original --reason "Chữ ký tác giả giữ nguyên"
+```
+
+**3. Thay bằng ảnh đã edit tiếng Việt** (ví dụ bìa sách, bản đồ):
+```powershell
+.\novel-translate-cli.exe image assess --workspace W --volume vol01 --id ID_ANH --disposition replace --file covers/vol01_vi.jpg --reason "Ảnh bìa đã typeset tiếng Việt"
+```
+
+**4. Thêm bảng chú thích dịch bên dưới ảnh** (ví dụ trang giới thiệu nhân vật):
+```powershell
+.\novel-translate-cli.exe image assess --workspace W --volume vol01 --id ID_ANH --disposition transcript --transcript "Nhân vật A: Mô tả\nNhân vật B: Mô tả" --reason "Dịch trang giới thiệu nhân vật"
+```
+Hoặc truyền file transcript:
+```powershell
+.\novel-translate-cli.exe image assess --workspace W --volume vol01 --id ID_ANH --disposition transcript --transcript-file ./transcripts/char_intro.txt --reason "Dịch từ file transcript"
+```
+Bản dịch sẽ được hiển thị thành một khung chú thích trang nhã ngay dưới bức ảnh trong file sách EPUB.
 
 ---
 
-### Quy hoạch cuộn 2 tầng (Rolling Planning)
+## Xuất file EPUB tiếng Việt thành phẩm
 
-Khác với các công cụ AI thông thường lên dàn ý cứng một lần cho cả trăm chương khiến câu chuyện càng về sau càng rỗng và loãng, `ainovel-cli` áp dụng cơ chế **La bàn (Compass) + Tầm nhìn cuộn**:
-- Ban đầu chỉ dựng khung 2 Tập (Volume) và dàn ý chi tiết cho Cung đầu tiên (Arc 1).
-- Khi viết gần hết một Cung, Editor đánh giá tổng kết và Architect mới tiếp tục mở rộng Cung tiếp theo dựa trên diễn biến thực tế của truyện.
+Khi đã dịch xong các chương:
+```powershell
+.\novel-translate-cli.exe export --workspace ./workspace/<ten_bo> --volume vol01
+```
+File thành phẩm sẽ nằm tại: `workspace/<ten_bo>/Output/vol01_VI.epub`.
 
----
+Bạn có thể xuất thử chỉ vài chương (xem trước khi dịch xong hết):
+```sh
+novel-translate-cli export --workspace W --volume vol01 --preview
+novel-translate-cli export --workspace W --volume vol01 --from c004 --to c005
+```
 
-### Quản lý & Nén ngữ cảnh 4 cấp
-
-Để viết được truyện dài **500+ chương** mà không bị tràn context window hay mất trí nhớ, hệ thống sử dụng đường ống nén 4 cấp:
-1. **ToolResultMicrocompact**: Dọn dẹp kết quả trung gian của các lệnh tool cũ.
-2. **LightTrim**: Cắt tỉa các đoạn text dài không còn cần thiết.
-3. **StoreSummaryCompact**: Thay thế tin nhắn cũ bằng bản tóm tắt đã lưu trong Store (0 tốn LLM token).
-4. **FullSummary**: Dùng prompt chuyên dụng tóm tắt ngữ cảnh tự sự (giữ vững trạng thái nhân vật, manh mối phục bút).
-
----
-
-### Đánh giá chất lượng 7 chiều của Editor
-
-Sau mỗi chương, Editor sẽ thẩm định nghiêm ngặt theo 7 tiêu chí (mỗi nhận xét bắt buộc phải trích dẫn câu văn làm bằng chứng):
-1. **Tính nhất quán của thiết lập (Consistency)**
-2. **Hành vi & Tính cách nhân vật (Character Behavior)**
-3. **Nhịp điệu cốt truyện (Pacing)**
-4. **Tính mạch lạc & Chuyển cảnh (Narrative Flow)**
-5. **Gài gắm phục bút (Foreshadowing)**
-6. **Móc câu giữ chân người đọc cuối chương (Hooks)**
-7. **Chất lượng thẩm mỹ văn chương (Aesthetic Quality)**: Chi tiết miêu tả, thủ pháp nghệ thuật, sự khác biệt trong lời thoại, chất lượng từ ngữ, sức truyền cảm.
+Bạn chỉ việc chép file EPUB vào điện thoại, máy tính bảng hoặc máy đọc sách (Kindle, Kobo) là có thể thưởng thức cuốn sách tiếng Việt hoàn hảo!
 
 ---
 
-### Khôi phục điểm ngắt (Step-level Recovery)
+## Theo dõi tiến độ & chi phí token
 
-Mỗi lần một công cụ thực thi thành công, hệ thống sẽ ghi ngay một checkpoint (`meta/checkpoints.jsonl`). Nếu bị mất điện, tắt máy, rớt mạng hay nhấn `Ctrl+C`:
-- Khi mở lại, hệ thống đọc `progress.json` và checkpoint gần nhất.
-- Tự động tiếp tục chính xác từ bước bị dừng lại (ví dụ: *"Đã xong draft chương 7, tiếp tục bước check_consistency"*).
+Gõ lệnh sau để xem trạng thái dịch hiện tại:
+```powershell
+.\novel-translate-cli.exe status --workspace ./workspace/<ten_bo>
+```
+
+Kết quả hiển thị:
+- Số khối đã dịch và đã đối chiếu xong cho mỗi tập.
+- Số khối "stale" (cần dịch lại do thay đổi quy ước/nguồn).
+- **Tổng số request đã gửi tới API**.
+- **Chi phí USD đã biết** (tính từ token usage mà provider trả về).
+- **Số request chưa rõ chi phí** (provider không trả thông tin giá).
+
+Thêm cờ `--json` để lấy dữ liệu dạng JSON chi tiết (tiện cho script hoặc tích hợp):
+```powershell
+.\novel-translate-cli.exe status --workspace ./workspace/<ten_bo> --json
+```
+
+Bạn cũng có thể giới hạn số request tối đa trong `workspace.yaml`:
+```yaml
+run:
+  max_requests: 500   # 0 = không giới hạn; số dương = giới hạn request thật
+```
+
+Hoặc giới hạn ngân sách USD trong `provider.jsonc`:
+```jsonc
+{
+  "budget": {
+    "book_usd": 0.50
+  }
+}
+```
+Khi bật giới hạn USD mà chi phí request trước chưa rõ, hệ thống sẽ dừng lại thay vì suy đoán giá.
 
 ---
 
-## 9. Cấu Trúc Thư Mục Đầu Ra
+## Thêm tập sách tiếp theo
 
-Toàn bộ dữ liệu được lưu trong thư mục output:
+Khi muốn dịch tập 2, tập 3..., chỉ cần đăng ký thêm volume:
+```sh
+novel-translate-cli volume add --workspace W --id vol02 --order 2 --previous vol01 --source SOURCE_VOL02.epub
+novel-translate-cli import --workspace W --volume vol02
+novel-translate-cli translate --workspace W --volume vol02
+```
 
-```text
-output/novel/
-├── book.md             # Tên sách và tóm tắt giới thiệu
-├── chapters/           # Bản thảo hoàn chỉnh từng chương (.md)
-│   ├── 01.md
-│   └── ...
-├── summaries/          # Tóm tắt từng chương, cung, tập (JSON)
-├── drafts/             # Bản nháp từng chương
-├── reviews/            # Báo cáo đánh giá chi tiết của Editor
-├── timeline.jsonl      # Nhật ký dòng thời gian
-├── premise.md          # Tiền đề cốt truyện
-├── outline.json        # Dàn ý chi tiết các chương
-├── layered_outline.json# Dàn ý phân tầng nhiều tập
-├── characters.json     # Hồ sơ nhân vật
-├── world_rules.json    # Quy tắc thế giới
-└── meta/
-    ├── book.json       # Metadata tác phẩm
-    ├── compass.json    # La bàn định hướng dài hạn
-    ├── progress.json   # Trạng thái tiến độ hiện tại
-    ├── foreshadow.json# Sổ tay quản lý phục bút
-    └── checkpoints.jsonl # Checkpoint khôi phục từng bước
+`previous` phải là tập đã đăng ký sớm hơn. Context chỉ lấy bản dịch đã chấp nhận trước vị trí hiện tại; không lấy sự kiện tương lai. Thiếu tập trước tạo cảnh báo, không bịa ký ức.
+
+---
+
+## Xử lý khi file EPUB gốc thay đổi
+
+Nếu file EPUB gốc đã đăng ký bị thay đổi (ví dụ bạn tải lại bản mới), lệnh `translate`/`export` sẽ bị chặn. Xử lý như sau:
+```sh
+novel-translate-cli source plan --workspace W --volume vol01
+novel-translate-cli source apply --workspace W --volume vol01 --plan PLAN_ID
+novel-translate-cli resume --workspace W --volume vol01
+```
+
+Mapping bảo thủ theo document/DOM locator. Khối không map chắc chắn được archive; bản sửa tay map được giữ nhưng phải review lại.
+
+---
+
+## Hồi tưởng / Scene mapping (Nâng cao)
+
+Khi một đoạn trong sách là hồi tưởng lại sự kiện ở tập trước, bạn có thể gán scene để AI dịch đúng ngữ cảnh:
+```sh
+novel-translate-cli scene set --workspace W --volume vol02 --id FIRST_BLOCK --end LAST_BLOCK --quote "Nguyên văn Nhật" --reason "Căn cứ xác định cảnh" --story-volume 1 --story-chapter 2 --story-block 3
+```
+
+Nếu chưa xác định được thời điểm cụ thể:
+```sh
+novel-translate-cli scene set --workspace W --volume vol02 --id FIRST_BLOCK --end LAST_BLOCK --quote "Nguyên văn Nhật" --reason "Chưa xác định được thời điểm" --uncertain
 ```
 
 ---
 
-## 10. Tùy Biến Văn Phong & Quy Tắc Cá Nhân
+## Skills nâng cao & Research
 
-### Thêm quy tắc riêng (Không cần sửa code)
-Tạo file `.md` bất kỳ trong thư mục `~/.ainovel/rules/` hoặc `./.ainovel/rules/` và viết bằng ngôn ngữ tự nhiên:
-- *"Nhân vật chính quyết đoán, không thánh mẫu"*
-- *"Tăng cường miêu tả cảm giác cơ thể và khung cảnh xung quanh"*
-- *"Mỗi chương khoảng 3000 từ"*
-- *"Không dùng các từ sáo rỗng như: 'ở một mức độ nào đó', 'như thể', 'bất giác'"*
+### AI tự đề xuất quy ước
+```sh
+novel-translate-cli skill generate --workspace W --volume vol01
+```
+AI sẽ phân tích sách gốc và đề xuất tên nhân vật, thuật ngữ. Bạn xác nhận hoặc từ chối từng đề xuất:
+```sh
+novel-translate-cli skill resolve --workspace W --id RULE_ID --decision confirm --reason "Bằng chứng và quyết định"
+novel-translate-cli skill resolve --workspace W --id RULE_ID --decision reject --reason "Không phù hợp nguồn/quy ước"
+```
 
-Hệ thống sẽ tự động tổng hợp các yêu cầu này vào bộ quy tắc kiểm duyệt của tác phẩm.
+### Tra cứu thông tin từ web
+```sh
+novel-translate-cli skill research --workspace W --volume vol01 --term "Thuật ngữ đã có trong nguồn"
+```
+
+Cấu hình nguồn tra cứu trong `workspace.yaml`:
+```yaml
+research_sources:
+  - id: wiki-source
+    api: mediawiki
+    base_url: https://example.fandom.com
+    edition: fandom
+    kind: community
+```
+
+Hỗ trợ 3 loại API: `mediawiki` (gọi `/api.php` để search), `fetch` (URL cấu hình), và `json` (GET với query `q`). Web chỉ là reference data; model không được tự tạo URL làm evidence.
+
+### Cấu trúc file Skill (Cho ai muốn tùy chỉnh sâu)
+
+Core skill là Markdown với optional YAML frontmatter:
+```yaml
+id: ten-skill            # ID duy nhất
+priority: 50             # Số càng cao càng ưu tiên (SKILL.md mặc định = 100)
+from:                    # Scope bắt đầu áp dụng (tùy chọn)
+  volume: 1
+until:                   # Scope kết thúc, không bao gồm (tùy chọn)
+  volume: 5
+references:              # Paths tương đối tới file tham chiếu (tùy chọn)
+  - ./data/characters.md
+```
+
+Với thư viện chung, bật skill ID trong `enabled_skills` và thêm `skill_libraries` trong `workspace.yaml`; tránh hai file định nghĩa cùng ID.
 
 ---
 
-## 11. Tech Stack & License
+## Cấu hình nâng cao trong workspace.yaml
 
-- **Ngôn ngữ**: [Go](https://go.dev/) (Hiệu năng cao, kiểm soát chặt chẽ concurrency và I/O)
-- **Agent Core**: [agentcore](https://github.com/voocel/agentcore) (Tool-calling + Streaming)
-- **LLM Interface**: [litellm](https://github.com/voocel/litellm)
-- **TUI Framework**: [Bubble Tea](https://github.com/charmbracelet/bubbletea) & [Lip Gloss](https://github.com/charmbracelet/lipgloss)
+Ví dụ cấu hình bổ sung (giữ các defaults mà `init` đã tạo):
 
-### License
-Dự án được phân phối dưới giấy phép mã nguồn mở **MIT License**.
-Bản Việt hóa và phát triển bởi cộng đồng. Chúc bạn có những tác phẩm tuyệt vời!
+```yaml
+provider_config: /private/provider.jsonc
+output:
+  directory: Output
+  template: sample-vi
+  epubcheck: /tools/epubcheck/epubcheck.jar
+  font_directory: /fonts/liberation
+```
+
+Thư mục font cần `LiberationSerif-Regular.ttf`, `LiberationSerif-Bold.ttf`, `LiberationSerif-Italic.ttf`, `LiberationSerif-BoldItalic.ttf`.
+
+### Cài EPUBCheck (Kiểm tra chất lượng file EPUB)
+
+Tải EPUBCheck distribution từ [W3C EPUBCheck](https://github.com/w3c/epubcheck/releases), giữ JAR và thư mục lib đi kèm, cài Java thích hợp và chạy:
+```sh
+java -jar /tools/epubcheck/epubcheck.jar --version
+```
+Khai báo đường dẫn trong workspace; thiếu checker không cho final export. Với Windows, CLI khởi chạy checker từ thư mục artifact để tránh lỗi đường dẫn workspace Unicode của Java.
+
+---
+
+## Sao lưu & Khôi phục
+
+Dừng writer trước khi backup. Sao lưu toàn bộ workspace gồm:
+- `workspace.yaml`
+- `Skills/`
+- Thư mục chapters
+- `Output/`
+- **Toàn bộ `.translation_work/`** (bao gồm source snapshots, generations, checksums, scene mappings, jobs, plans, rule history và usage)
+
+Khi restore backup, giữ cấu trúc tương đối, đặt lại provider config/biến môi trường ở máy mới rồi chạy `status`. Credential config nằm riêng, không commit key vào Git.
+
+---
+
+## Bảng tra cứu lệnh nhanh
+
+| Lệnh | Ý nghĩa |
+| :--- | :--- |
+| `init <thư mục> --series <tên>` | Khởi tạo thư mục dự án cho một bộ truyện mới |
+| `volume add ...` | Đăng ký một tập sách tiếng Nhật mới vào bộ truyện |
+| `import ...` | Bóc tách và kiểm kê cấu trúc file EPUB gốc |
+| `translate ...` | Bắt đầu hoặc tiếp tục dịch tự động |
+| `resume ...` | Tiếp tục dịch nếu bị mất mạng hoặc tạm dừng |
+| `status [--json] ...` | Xem tiến độ dịch, số request, chi phí USD |
+| `sync ...` | Cập nhật những câu bạn đã tự sửa tay trên file Markdown |
+| `review ...` | Chạy lại review cho chương cụ thể, hoặc giữ bản dịch sau khi xem vấn đề |
+| `retranslate plan/apply ...` | Lập kế hoạch và dịch lại các đoạn bị ảnh hưởng |
+| `skill list ...` | Xem danh sách các kỹ năng / quy ước đang kích hoạt |
+| `skill import ...` | Nạp file ghi chú / glossary thuật ngữ từ bên ngoài vào dự án |
+| `skill generate ...` | AI tự đề xuất tên nhân vật, thuật ngữ từ sách gốc |
+| `skill resolve ...` | Xác nhận hoặc từ chối đề xuất quy ước của AI |
+| `skill research ...` | Tra cứu thông tin thuật ngữ từ web |
+| `scene set/clear ...` | Gán hoặc xóa scene hồi tưởng cho một đoạn sách |
+| `source plan/apply ...` | Xử lý khi file EPUB gốc bị thay đổi |
+| `image list ...` | Xem danh sách tất cả tranh ảnh trong tập |
+| `image assess ...` | Gắn nhãn hoặc thay thế ảnh có chữ |
+| `export [--preview] ...` | Đóng gói sách thành file EPUB tiếng Việt hoàn chỉnh |
+| `restore ...` | Khôi phục bản dịch về một generation cũ |
+
+---
+
+## Giới hạn hiện tại
+
+- XML EPUB 2/3 theo namespace được hỗ trợ; file mã hóa, script, generated CSS text hoặc SVG text chưa được xử lý hoàn chỉnh.
+- Chưa có OCR/dịch chữ trong ảnh tự động.
+- Layout giữ XHTML của nguồn và hình xen trong spine; chưa có gộp tất cả trang hình thành `<figure>` theo mẫu.
+- Exit code: `0` thành công; `1` lỗi cấu hình/IO/request; `2` còn vấn đề unresolved.
+
+---
+
+## Câu hỏi thường gặp (FAQ)
+
+**1. Mất mạng hoặc máy tính tắt đột ngột thì có phải dịch lại từ đầu không?**
+> **Không bao giờ!** Hệ thống lưu checkpoint liên tục sau từng câu. Khi mở máy lại, bạn chỉ cần gõ `resume` là nó tiếp tục ngay từ câu đang làm dở, không mất bất kỳ dữ liệu nào và không tốn phí dịch lại.
+
+**2. Chi phí dịch một tập sách khoảng bao nhiêu tiền?**
+> Nếu dùng các model tối ưu như **Gemini 2.5 Flash** hoặc **GPT-4o Mini**, chi phí dịch trọn vẹn cả một tập Light Novel (khoảng 80.000 - 100.000 chữ Nhật) chỉ tốn khoảng **vài nghìn đồng đến dưới 10.000 VND** (thậm chí hoàn toàn miễn phí nếu bạn dùng gói Free Tier của Google). Bạn có thể dùng lệnh `status` bất cứ lúc nào để xem chi phí thực tế đang bao nhiêu.
+
+**3. File EPUB xuất ra có đọc được trên Kindle không?**
+> **Hoàn toàn được!** File xuất ra đạt chuẩn quốc tế W3C EPUB 3. Bạn có thể gửi trực tiếp qua tính năng *Send-to-Kindle* của Amazon hoặc đọc trên app Apple Books, Kobo, Moon+ Reader mượt mà.
+
+**4. Làm sao theo dõi xem đã tốn bao nhiêu token/tiền?**
+> Gõ `status --workspace <path>` để xem tổng số request, chi phí USD đã biết và số request chưa rõ chi phí. Thêm `--json` để lấy dữ liệu chi tiết dạng JSON. Bạn cũng có thể đặt giới hạn ngân sách trong `provider.jsonc` (trường `budget.book_usd`) để tự động dừng khi vượt mức.
+
+---
+
+## Giấy phép
+
+Mã nguồn được phân phối theo giấy phép [MIT License](LICENSE).

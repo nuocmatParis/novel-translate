@@ -1,10 +1,10 @@
 services:
-  ainovel:
-    image: ghcr.io/voocel/ainovel-cli:latest
+  novel-translate:
+    image: novel-translate-cli:local
     build:
       context: .
     volumes:
-      - ./config:/root/.ainovel
       - ./workspace:/workspace
-    stdin_open: true
-    tty: true
+      - ./config/provider.json:/root/.novel-translate/config.json:ro
+      - ./tools/epubcheck:/tools/epubcheck:ro
+    working_dir: /workspace
