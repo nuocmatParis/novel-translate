@@ -70,6 +70,22 @@ Các ví dụ chính dùng PowerShell. Trên Linux/macOS, thay `.\novel-translat
 
 Final export cần Java và EPUBCheck; xem phần cấu hình nâng cao. Import và status không cần API key.
 
+### Mở giao diện terminal (TUI)
+
+```powershell
+.\novel-translate-cli.exe tui
+```
+
+Chọn **Mở workspace** hoặc **Tạo workspace mới** ngay trong giao diện. Nếu đã có workspace:
+
+```powershell
+.\novel-translate-cli.exe tui --workspace "D:\Light Novels\workspace\bo-truyen" --volume vol01
+```
+
+Dùng **↑/↓** chọn thao tác, **←/→** đổi tập và **Enter** thực hiện. TUI có thêm tập, chọn file cấu hình API, nhập EPUB, dịch/tiếp tục, review, đồng bộ sửa tay, kiểm tra, xuất EPUB và xem ảnh/skills. **PgUp/PgDn** cuộn nhật ký; **Ctrl+C/Esc** dừng tác vụ; **q** dừng rồi thoát. Trong biểu mẫu, **Tab** đổi ô, **Ctrl+U** xóa ô và **Enter** ở ô cuối để lưu. Có thể dùng alias `--tui`.
+
+Mở giao diện không gọi model. Dịch/review cần xác nhận bằng `y` và dùng cấu hình/ngân sách hiện có. API key được đọc theo cấu hình provider từ môi trường của terminal chạy TUI. Các lệnh CLI vẫn dùng được bình thường; thao tác ảnh và revision chi tiết tiếp tục dùng các subcommand tương ứng.
+
 ---
 
 ## Hướng dẫn sử dụng từ A đến Z

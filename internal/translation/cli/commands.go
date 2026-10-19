@@ -27,6 +27,7 @@ import (
 
 const Help = `novel-translate-cli — dịch EPUB Nhật → Việt
 
+tui [--workspace <path>] [--volume <id>]
 init <workspace> --series <id> [--title <text>]
 volume add --workspace <path> --id <id> --order <n> --source <epub> [--previous <id>] [--directory <relative>]
 import|translate|resume|sync|verify --workspace <path> --volume <id>
@@ -56,6 +57,8 @@ Exit: 0 thành công, 1 lỗi vận hành/config, 2 còn vấn đề chưa giả
 
 type Options struct {
 	NewModel func(workspace.Config) (model.Caller, error)
+	// Input defaults to os.Stdin; interactive callers can supply their terminal.
+	Input io.Reader
 }
 
 func defaultModel(c workspace.Config) (model.Caller, error) {
@@ -76,7 +79,12 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, options O
 	if options.NewModel == nil {
 		options.NewModel = defaultModel
 	}
-	e := execute(ctx, args, stdout, stderr, options)
+	var e error
+	if args[0] == "tui" || args[0] == "--tui" {
+		e = runTUI(ctx, args[1:], stdout, stderr, options)
+	} else {
+		e = execute(ctx, args, stdout, stderr, options)
+	}
 	if e == nil {
 		return 0
 	}
