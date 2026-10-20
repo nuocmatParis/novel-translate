@@ -6,8 +6,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/voocel/ainovel-cli/internal/translation/domain"
+	"github.com/voocel/ainovel-cli/internal/translation/epub"
 	"github.com/voocel/ainovel-cli/internal/translation/skills"
 	"github.com/voocel/ainovel-cli/internal/translation/state"
 	"github.com/voocel/ainovel-cli/internal/translation/workspace"
@@ -188,8 +190,53 @@ func Sync(c workspace.Config, v workspace.Volume, book domain.Book, g *domain.Ge
 			}
 		}
 	}
+	return applyManualChanges(book, g, changes), nil
+}
+
+// EditUnit edits only target text; markers and source mapping stay out of the
+// editor. Reuse the same invalidation behavior as syncing chapter Markdown.
+func EditUnit(book domain.Book, g *domain.Generation, id, target string) (int, error) {
+	u, ok := g.Units[id]
+	if !ok {
+		return 0, errors.New("khối chưa có bản dịch để sửa")
+	}
+	if strings.TrimSpace(target) == "" {
+		return 0, errors.New("bản dịch không được trống")
+	}
+	if !utf8.ValidString(target) {
+		return 0, errors.New("bản dịch phải là UTF-8")
+	}
+	if strings.Contains(target, "<!-- unit:") || strings.Contains(target, "<!-- /unit -->") {
+		return 0, errors.New("không nhập unit markers vào phần bản dịch")
+	}
+	for _, r := range target {
+		if r < 0x20 && r != '\n' && r != '\r' && r != '\t' || r == 0xfffe || r == 0xffff {
+			return 0, errors.New("bản dịch chứa ký tự XML không hợp lệ")
+		}
+	}
+	for _, b := range book.Blocks {
+		if b.ID != id {
+			continue
+		}
+		if u.SourceHash != b.SourceHash {
+			return 0, errors.New("nguồn của khối đã thay đổi")
+		}
+		if b.Kind != "attribute" {
+			if _, err := epub.TokensHTML(b, target); err != nil {
+				return 0, err
+			}
+		}
+		if u.Target == target {
+			return 0, nil
+		}
+		return applyManualChanges(book, g, map[string]string{id: target}), nil
+	}
+	return 0, errors.New("không tìm thấy khối nguồn")
+}
+
+func applyManualChanges(book domain.Book, g *domain.Generation, changes map[string]string) int {
 	if len(changes) == 0 {
-		return 0, nil
+		return 0
 	}
 	earliest := len(book.Blocks)
 	for _, b := range book.Blocks {
@@ -223,7 +270,7 @@ func Sync(c workspace.Config, v workspace.Volume, book domain.Book, g *domain.Ge
 			}
 		}
 	}
-	return len(changes), nil
+	return len(changes)
 }
 
 type Impact struct {

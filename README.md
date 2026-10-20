@@ -27,11 +27,26 @@ go build -trimpath -o novel-translate-cli.exe ./cmd/novel-translate-cli
 Linux/macOS:
 
 ```sh
-go build -trimpath -o novel-translate-cli ./cmd/novel-translate-cli
-./novel-translate-cli --help
+# Trong thư mục repo; tự build nếu chưa có binary, rồi mở TUI
+sh scripts/run.sh
+
+# Hoặc dùng Make để build lại mỗi lần chạy
+make run
+
+# Truyền lệnh CLI qua script
+sh scripts/run.sh status --workspace ./workspace/bo-truyen
 ```
 
-Hoặc chạy `sh scripts/install.sh` trên hệ thống có shell và Go. Script build checkout hiện tại vào `~/.local/bin`; biến `NOVEL_TRANSLATE_INSTALL_DIR` đổi thư mục đích. Thêm thư mục đó vào `PATH` nếu cần.
+Sau khi cập nhật mã nguồn, chạy `make build` hoặc `go build -trimpath -o novel-translate-cli ./cmd/novel-translate-cli` để thay binary cũ. `scripts/run.sh` dùng lại binary đã có.
+
+Cài vào thư mục người dùng trên Linux/macOS:
+
+```sh
+sh scripts/install.sh
+"$HOME/.local/bin/novel-translate-cli" tui
+```
+
+Script build checkout hiện tại vào `~/.local/bin`; biến `NOVEL_TRANSLATE_INSTALL_DIR` đổi thư mục đích. Gọi bằng đường dẫn trên không cần chỉnh `PATH`. API key lưu trong TUI hoặc `.env` nên không cần `export` lại mỗi lần mở.
 
 Workflow CI tạo artifacts Windows/Linux. Workflow đóng gói được kích hoạt thủ công và tạo snapshot cho Windows/Linux/macOS, amd64/arm64; không tự phát hành GitHub Release. Build chéo chưa chứng minh chạy thực tế trên mọi hệ điều hành.
 
@@ -43,28 +58,45 @@ Các ví dụ sau dùng **PowerShell** và binary trong thư mục hiện tại.
 .\novel-translate-cli.exe tui
 ```
 
-Chọn **Mở workspace** hoặc **Tạo workspace mới**. Nếu thư mục hiện tại có `workspace.yaml`, TUI mở workspace đó. Có thể chỉ định ngay:
+Chạy binary không có đối số trong terminal cũng mở TUI; `--help` xem trợ giúp CLI. Chọn **Mở workspace** hoặc **Tạo workspace mới**. Nếu thư mục hiện tại có `workspace.yaml`, TUI mở workspace đó. Có thể chỉ định ngay:
 
 ```powershell
 .\novel-translate-cli.exe tui --workspace .\workspace\bo-truyen --volume vol01
 ```
 
-Alias: `--tui`. TUI hỗ trợ quản lý tập, chọn file cấu hình API, import, dịch/tiếp tục, review, sync, verify, xuất EPUB, xuất/đánh giá ảnh và xem skills. Các thao tác revision, research và scene chi tiết dùng CLI.
+Alias: `--tui`. Luồng thiết lập thông thường thực hiện ngay trong TUI:
+
+1. Nhấn **n** tạo workspace, hoặc **o** mở bộ truyện đã có. Nhấn **Ctrl+O** trong ô đường dẫn để duyệt thư mục.
+2. Nhấn **a** thêm tập và chọn EPUB Nhật. Tập tiếp theo tự gợi ý số thứ tự và tập trước.
+3. Nhấn **m** chọn giao thức, tên model và nhập API key. Key được che khi nhập, lưu vào `.env` của workspace; cấu hình model lưu ở `.translation_work/provider.json`.
+4. Nhấn **s** sửa quy ước bộ truyện; **c** chỉnh giới hạn requests, timeout, đường dẫn EPUBCheck và font.
+5. Chọn **Nhập EPUB**, rồi **Dịch / tiếp tục**. Nhấn **e** đọc/sửa bản dịch theo chương và đoạn; **Ctrl+S** lưu. Chọn **Review bản dịch** để đối chiếu lại phần đã sửa.
+6. Xử lý ảnh, kiểm tra và xuất EPUB bằng các mục trong menu.
+
+Không cần tự tạo file cấu hình hoặc đặt biến môi trường cho luồng này. Thiết lập model nhanh dùng **một model mặc định cho cả ba role** và giữ giới hạn budget cũ; không chuyển các override/fallback riêng từ file cũ. Với cấu hình nhiều model, dùng **Chọn file cấu hình API**. Các thao tác revision, research và scene chi tiết vẫn có CLI.
 
 | Phím | Thao tác |
 | --- | --- |
 | ↑ / ↓ hoặc j / k | Chọn thao tác |
 | ← / → | Chọn tập |
 | Enter | Thực hiện; ở biểu mẫu: sang ô tiếp theo/lưu ở ô cuối |
-| Tab / Shift+Tab | Đổi ô nhập |
-| Ctrl+U / Backspace | Xóa ô / xóa ký tự cuối |
+| n / o / a | Tạo workspace / mở workspace / thêm tập, tại màn hình chính |
+| m / c / s / e | Model và key / cấu hình chạy / sửa quy ước / sửa bản dịch |
+| Tab / Shift+Tab | Đổi ô trong biểu mẫu |
+| ← / →, Home / End, Delete / Backspace | Di chuyển con trỏ và sửa nội dung ô nhập |
+| Ctrl+U | Xóa nội dung ô nhập |
+| Ctrl+O | Duyệt file/thư mục trong ô đường dẫn; Space chọn thư mục đang mở |
+| Ctrl+N | Đổi lựa chọn giao thức, API hoặc cách xử lý ảnh |
+| Ctrl+S | Lưu trong trình sửa bản dịch/quy ước |
+| Tab | Trong trình sửa bản dịch: chuyển giữa nguồn Nhật và bản dịch Việt |
+| ? | Xem trợ giúp phím tắt tại màn hình chính |
 | r | Làm mới tiến độ |
 | PgUp / PgDn | Cuộn nhật ký |
 | Esc | Hủy hộp thoại; khi đang chạy thì dừng tác vụ |
 | Ctrl+C | Dừng tác vụ; khi rảnh thì thoát |
-| q | Thoát; nếu đang chạy, dừng và chờ tác vụ kết thúc |
+| q | Tại màn hình chính: thoát; nếu đang chạy, dừng và chờ tác vụ kết thúc |
 
-Dịch/review yêu cầu xác nhận `y` trước khi gọi API. TUI dùng biến môi trường của terminal đã mở nó. Nhật ký trên màn hình giữ tối đa 500 dòng; dữ liệu lâu dài nằm trong workspace.
+Dịch/review yêu cầu xác nhận `y` trước khi gọi API. Trong trình sửa, Esc hỏi trước khi bỏ nội dung chưa lưu; lưu bị lỗi vẫn giữ nội dung đang nhập. Nếu bản dịch, quy ước hoặc cấu hình workspace đã được cập nhật ở nơi khác, TUI báo xung đột để bạn đối chiếu. Trình sửa hiển thị xuống dòng kiểu LF và tab thành bốn dấu cách; khi lưu phần đã sửa dùng định dạng này. File quá 9999 dòng hoặc có ký tự không hỗ trợ được giữ nguyên và báo lỗi khi mở. Nhật ký trên màn hình giữ tối đa 500 dòng; dữ liệu lâu dài nằm trong workspace.
 
 ## 3. Tạo workspace và nhập tập đầu
 
@@ -91,6 +123,7 @@ Sau các bước import/dịch/export, workspace có dạng:
 ```text
 workspace/bo-truyen/
 ├── workspace.yaml
+├── .env                           # Key cục bộ nếu thiết lập model qua TUI
 ├── Skills/
 │   ├── SKILL.md                    # Quy ước riêng của bộ truyện
 │   ├── core/<skill-id>/SKILL.md    # Quy tắc chung đã cài
@@ -108,7 +141,9 @@ File nguồn ngoài workspace chỉ được đọc. Đường dẫn tương đ�
 
 ## 4. Cấu hình model
 
-Chọn một mẫu:
+Cách nhanh: mở TUI và nhấn **m**, không cần lệnh đặt biến môi trường. Ô API OpenAI chỉ áp dụng cho giao thức `openai`; Gemini/Anthropic dùng giao thức native. Để trống key khi lưu lại sẽ dùng key hiện có. Nếu đổi dịch vụ, nhập key tương ứng của dịch vụ mới.
+
+Nếu muốn cấu hình nâng cao bằng file, chọn một mẫu:
 
 | Dịch vụ / giao thức | File mẫu | Lưu ý |
 | --- | --- | --- |
@@ -125,14 +160,29 @@ Copy-Item .\config.example.jsonc .\config\provider.jsonc
 
 Mở file vừa sao chép, thay **tất cả** placeholder tên model/endpoint theo dịch vụ và quyền truy cập của API key. Đặt `context_window` theo model nếu cần; khi không biết, runtime dùng registry hoặc mặc định bảo thủ. Mẫu chưa điền chưa phải cấu hình chạy được.
 
-Nhập key cho cửa sổ PowerShell hiện tại:
+Key có thể lưu trong `.env` cạnh `workspace.yaml`, cạnh file provider, hoặc trong thư mục chạy ứng dụng. Tạo từ mẫu rồi mở file để điền key của bạn:
 
 ```powershell
-$translationKey = Read-Host 'API key' -AsSecureString
-$env:NOVEL_TRANSLATE_API_KEY = [System.Net.NetworkCredential]::new('', $translationKey).Password
+Copy-Item .\.env.example .\workspace\bo-truyen\.env
 ```
 
-Mở `workspace/bo-truyen/workspace.yaml`, thêm/sửa dòng ở cấp ngoài cùng:
+Linux/macOS:
+
+```sh
+cp .env.example ./workspace/bo-truyen/.env
+```
+
+Nội dung `.env` dùng tên biến trùng với `api_key_env` trong file provider:
+
+```dotenv
+NOVEL_TRANSLATE_API_KEY=YOUR_API_KEY
+```
+
+Ứng dụng tự đọc `.env` mỗi lần cần cấu hình model, không cần chạy `source`, `export` hoặc lệnh PowerShell ở mỗi phiên. Thứ tự ưu tiên cho từng key: **biến môi trường có giá trị → `.env` workspace → `.env` cạnh provider → `.env` thư mục đang chạy**. Giá trị môi trường rỗng cho phép đọc file. Các file này không được nạp vào môi trường chung của tiến trình, nên mở workspace khác không kế thừa key vừa đọc. Nếu terminal đang đặt key cùng tên, key đó vẫn thắng key mới lưu trong TUI; bỏ thiết lập cũ hoặc mở terminal mới để dùng key trong file.
+
+TUI giữ các biến khác khi cập nhật `.env`, nhưng có thể định dạng lại file và bỏ comment. Key được lưu dạng văn bản trong file cục bộ; file do ứng dụng tạo dùng quyền `0600` trên hệ thống POSIX. Repo và Docker build context đã loại `.env`/`.env.*`, trừ mẫu `.env.example` được theo dõi trong Git.
+
+Trong TUI, dùng **Chọn file cấu hình API** để gắn file provider vào workspace. Hoặc sửa `workspace/bo-truyen/workspace.yaml`, thêm/sửa dòng ở cấp ngoài cùng:
 
 ```yaml
 provider_config: ../../config/provider.jsonc
@@ -146,7 +196,7 @@ Endpoint nội bộ không xác thực có thể dùng `allow_no_api_key: true` 
 
 ### Giới hạn khi chạy thử
 
-Sửa các trường tương ứng trong phần `run` đã có của `workspace.yaml`, không tạo thêm phần `run` trùng lặp:
+Trong TUI, nhấn **c** để đổi giới hạn requests và timeout. Các tùy chọn chi tiết có thể sửa trong phần `run` đã có của `workspace.yaml`, không tạo thêm phần `run` trùng lặp:
 
 ```yaml
 run:
@@ -167,7 +217,7 @@ run:
 
 ## 5. Quy ước, thuật ngữ và xưng hô
 
-Sửa `Skills/SKILL.md` của bộ truyện. File mặc định có priority 100; quy ước riêng cần nêu rõ phạm vi và ưu tiên nguồn Nhật. Ví dụ:
+Nhấn **s** trong TUI để sửa `Skills/SKILL.md` của bộ truyện và **Ctrl+S** để lưu, hoặc mở file bằng trình soạn thảo của bạn. File mặc định có priority 100; quy ước riêng cần nêu rõ phạm vi và ưu tiên nguồn Nhật. Ví dụ:
 
 ```markdown
 ---
@@ -209,7 +259,9 @@ Research cần khai báo `research_sources` trong YAML: `api` hỗ trợ `fetch`
 
 Luồng tự dịch → review → sửa trong giới hạn rồi tiếp tục; dừng nếu còn vấn đề chặn, xung đột hoặc chạm giới hạn. Ctrl+C yêu cầu dừng. `resume` dùng lại kết quả hợp lệ đã lưu; request đã gửi nhưng chưa lưu kết quả có thể phải gọi lại và tính phí lại.
 
-Sửa văn bản giữa `<!-- unit:ID -->` và `<!-- /unit -->` trong `vol01_translation/chapters/*.md`. Giữ nguyên markers, thứ tự và inline tokens `⟦…⟧`. Sau đó:
+Trong TUI, nhấn **e**, chọn chương rồi đoạn cần sửa. Nguồn Nhật hiển thị phía trên; Tab chuyển vùng để cuộn nguồn hoặc nhập bản dịch. **Ctrl+S** lưu revision và cập nhật Markdown cùng lúc, không cần chạy `sync`. Inline tokens `⟦…⟧` phải giữ nguyên; bản sửa làm mất token hoặc đổi nguồn sẽ bị từ chối. Bản sửa và ngữ cảnh phía sau cần được review lại.
+
+Nếu sửa bằng trình soạn thảo ngoài, chỉ đổi văn bản giữa `<!-- unit:ID -->` và `<!-- /unit -->` trong `vol01_translation/chapters/*.md`. Giữ nguyên markers, thứ tự và inline tokens `⟦…⟧`. Sau đó:
 
 ```powershell
 .\novel-translate-cli.exe sync --workspace $workspacePath --volume vol01
@@ -266,7 +318,7 @@ java -version
 java -jar "D:/Tools/epubcheck/epubcheck.jar" --version
 ```
 
-Sửa phần `output` hiện có trong `workspace.yaml`:
+Nhấn **c** trong TUI để chọn JAR/executable của EPUBCheck và thư mục font. Hoặc sửa phần `output` hiện có trong `workspace.yaml`:
 
 ```yaml
 output:
@@ -303,6 +355,8 @@ git diff --check
 
 Suite mặc định dùng fixtures tổng hợp, model giả và HTTP server cục bộ. Khi `NOVEL_TRANSLATE_LIVE_PROVIDER` chưa đặt, test model thật được skip.
 
+Linux/macOS có thể dùng `make test` và `make vet`. Các test giao diện kiểm tra form, lưu key và `.env`, sửa bản dịch/quy ước, bảo vệ xung đột và mở TUI bằng input giả; vẫn cần thử trực tiếp trên terminal bạn dùng.
+
 Chạy thêm kiểm tra EPUB hoàn chỉnh bằng Java/checker thật, với model giả:
 
 ```powershell
@@ -326,9 +380,9 @@ go test -race -buildvcs=false -count=1 ./internal/translation/state ./internal/t
 
 CI khai báo test Windows/Linux, race trên Linux và một job kiểm chứng export bằng EPUBCheck thật. Workflow Docker/snapshot chạy thủ công. Có workflow không đồng nghĩa đã chạy thành công: xem logs của lần chạy cụ thể.
 
-Rà soát ngày **19/10/2026**: các test hồi quy, export với EPUBCheck thật, vet/format và build sáu targets có kết quả đạt. Hai lượt chạy toàn suite trên máy Windows bị Application Control chặn một số test executables; binary mới cũng bị chặn khi thử mở local. Vì vậy chưa ghi nhận toàn suite hoặc chạy binary Windows mới là pass. Đây là lỗi chặn thực thi trước khi chương trình chạy, cần môi trường cho phép chạy build hoặc kết quả CI phù hợp; không phải lỗi API key.
+Kiểm chứng ngày **20/10/2026**: toàn suite offline, export với EPUBCheck thật, vet/format và build Windows/Linux/macOS amd64/arm64 đều đạt trên checkout này. Đã mở binary Windows trực tiếp, tạo workspace, lưu model/key giả có che nội dung và mở trình sửa quy ước trong TUI; không gọi API trả phí. Script khởi chạy/syntax được thử qua Git Bash Windows. Chạy TUI/installer thực tế trên Linux/macOS, race test, Docker và nghiệm thu model thật vẫn cần môi trường tương ứng.
 
-Docker là tùy chọn: chuẩn bị `config/provider.json`, `tools/epubcheck/` và `workspace/`, rồi dùng `docker compose run --rm --build novel-translate tui`. Compose chuyển biến `NOVEL_TRANSLATE_API_KEY` từ shell vào container. Workspace trong container dùng đường dẫn Linux: đặt `provider_config: /root/.novel-translate/config.json` (hoặc bỏ trường này để dùng fallback) và checker `/tools/epubcheck/epubcheck.jar`; không dùng đường dẫn `D:/...` trong đó.
+Docker là tùy chọn: chuẩn bị `config/provider.json`, `tools/epubcheck/` và `workspace/`, rồi dùng `docker compose run --rm --build novel-translate tui`. Workspace được bind-mount nên `.env` bên trong từng workspace cũng được đọc tự động; Compose có thể chuyển `NOVEL_TRANSLATE_API_KEY` từ shell và giá trị không rỗng này được ưu tiên. Workspace trong container dùng đường dẫn Linux: đặt `provider_config: /root/.novel-translate/config.json` (hoặc bỏ trường này để dùng fallback) và checker `/tools/epubcheck/epubcheck.jar`; không dùng đường dẫn `D:/...` trong đó. Nếu thiết lập model bằng TUI, file provider và `.env` được lưu ngay trong workspace đó.
 
 ## 10. Giới hạn và xử lý lỗi
 

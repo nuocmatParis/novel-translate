@@ -6,6 +6,8 @@ go.work
 go.work.sum
 .DS_Store
 .env
+.env.*
+!.env.example
 config
 workspace
 dist

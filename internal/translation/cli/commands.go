@@ -6,13 +6,14 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/voocel/ainovel-cli/internal/bootstrap"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/x/term"
+	"github.com/voocel/ainovel-cli/internal/bootstrap"
 	"github.com/voocel/ainovel-cli/internal/translation/domain"
 	"github.com/voocel/ainovel-cli/internal/translation/engine"
 	"github.com/voocel/ainovel-cli/internal/translation/epub"
@@ -53,6 +54,8 @@ export --workspace <path> --volume <id> [--preview] [--from <chapter> --to <chap
 
 translate/resume tự chạy tiếp, hai chương logic mỗi đợt. Lệnh chỉ đọc/import
 không cần API key. provider_config trong workspace.yaml trỏ tới JSON provider.
+Không truyền lệnh trong terminal: mở TUI. TUI hỗ trợ tạo workspace,
+thiết lập model/key, chọn file và sửa bản dịch. Key tự đọc từ .env.
 Exit: 0 thành công, 1 lỗi vận hành/config, 2 còn vấn đề chưa giải quyết.
 `
 
@@ -73,6 +76,9 @@ func defaultModel(c workspace.Config) (model.Caller, error) {
 	return a, nil
 }
 func Run(ctx context.Context, args []string, stdout, stderr io.Writer, options Options) int {
+	if len(args) == 0 && (options.Input != nil || term.IsTerminal(os.Stdin.Fd())) {
+		args = []string{"tui"}
+	}
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" || args[0] == "-h" {
 		fmt.Fprint(stdout, Help)
 		return 0
@@ -783,7 +789,7 @@ func status(out io.Writer, c workspace.Config, s state.Store, jsonOut bool) erro
 	if c.ProviderConfig != "" {
 		providerPath = c.ReadPath(c.ProviderConfig)
 	}
-	if cfg, e := bootstrap.LoadConfigFile(providerPath); e == nil {
+	if cfg, e := bootstrap.LoadConfigFile(providerPath, c.Root); e == nil {
 		budget["max_cost_usd"] = cfg.Budget.BookUSD
 		budget["cost_limit_enabled"] = cfg.Budget.Enabled()
 	}

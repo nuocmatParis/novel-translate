@@ -2,12 +2,50 @@ package revision
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/voocel/ainovel-cli/internal/translation/domain"
+	"github.com/voocel/ainovel-cli/internal/translation/epub"
 	"github.com/voocel/ainovel-cli/internal/translation/skills"
+	"github.com/voocel/ainovel-cli/internal/translation/testutil"
 	"github.com/voocel/ainovel-cli/internal/translation/workspace"
 )
+
+func TestEditUnitPreservesInlineStructureAndInvalidatesReview(t *testing.T) {
+	p, err := epub.Read(testutil.EPUB(), "vol01", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var block domain.Block
+	for _, b := range p.Book.Blocks {
+		if len(b.Tokens) > 0 && b.Kind != "attribute" {
+			block = b
+			break
+		}
+	}
+	if block.ID == "" {
+		t.Fatal("fixture needs inline formatting")
+	}
+	u := domain.Unit{ID: block.ID, SourceHash: block.SourceHash, Target: block.Source, Revision: 1, Review: &domain.Review{Decision: "accepted"}}
+	g := domain.Generation{Units: map[string]domain.Unit{block.ID: u}}
+	invalid := []string{"", "\x00bad", string([]byte{0xff}), "<!-- unit:fake -->", "<!-- /unit -->", strings.Replace(block.Source, "⟦t0⟧", "", 1), block.Source + "⟦unknown⟧"}
+	for _, target := range invalid {
+		if _, err := EditUnit(p.Book, &g, block.ID, target); err == nil {
+			t.Fatalf("invalid edit accepted: %q", target)
+		}
+		if g.Units[block.ID].Target != u.Target || g.Units[block.ID].Review == nil {
+			t.Fatal("failed validation mutated generation")
+		}
+	}
+	if n, err := EditUnit(p.Book, &g, block.ID, block.Source+"。修正"); err != nil || n != 1 {
+		t.Fatal(n, err)
+	}
+	changed := g.Units[block.ID]
+	if changed.Revision != 2 || changed.Origin != "manual" || changed.Review != nil || !changed.RefreshDependencies {
+		t.Fatal("manual edit did not invalidate old review")
+	}
+}
 
 func TestRecoverCommittedViewAndPreserveConcurrentEdit(t *testing.T) {
 	c, e := workspace.Create(t.TempDir(), "test", "Test")

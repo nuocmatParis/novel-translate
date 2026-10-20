@@ -54,7 +54,7 @@ func New(c workspace.Config) (*Adapter, error) {
 	} else {
 		p = c.ReadPath(p)
 	}
-	cfg, e := bootstrap.LoadConfigFile(p)
+	cfg, e := bootstrap.LoadConfigFile(p, c.Root)
 	if e != nil {
 		return nil, fmt.Errorf("cấu hình provider %s: %w", p, e)
 	}

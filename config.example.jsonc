@@ -1,5 +1,7 @@
 {
   // Replace provider/model with your chosen service. No key is stored here.
+  // api_key_env is resolved from the process environment or a local .env file.
+  // For a basic setup without editing files, open TUI and press m.
   "provider": "translation-service",
   "model": "YOUR_MODEL_ID",
   "providers": {

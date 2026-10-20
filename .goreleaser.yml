@@ -42,6 +42,7 @@ archives:
       - config.example.jsonc
       - config.gemini.example.jsonc
       - config.anthropic.example.jsonc
+      - .env.example
     name_template: >-
       {{ .ProjectName }}_{{ .Version }}_
       {{- title .Os }}_

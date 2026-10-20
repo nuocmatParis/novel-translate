@@ -9,3 +9,4 @@ mkdir -p "$DEST_DIR"
 cd "$REPO_DIR"
 GOWORK=off go build -trimpath -o "$DEST_DIR/novel-translate-cli" ./cmd/novel-translate-cli
 echo "Installed $DEST_DIR/novel-translate-cli"
+echo "Run: \"$DEST_DIR/novel-translate-cli\" tui"
