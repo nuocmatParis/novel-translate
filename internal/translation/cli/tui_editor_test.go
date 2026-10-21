@@ -147,6 +147,9 @@ func TestTUIEditorFitsNarrowWindowAndRetainsLongInput(t *testing.T) {
 	if e.input.Value() != e.base {
 		t.Fatal("long text truncated when opening")
 	}
+	if e.input.Line() != 0 {
+		t.Fatal("editor opened at end of document")
+	}
 	for _, line := range strings.Split(e.view(40, 18, "", false), "\n") {
 		if ansi.StringWidth(line) > 40 {
 			t.Fatalf("editor line wider than terminal: %q", line)

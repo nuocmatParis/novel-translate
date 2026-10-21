@@ -69,7 +69,7 @@ Alias: `--tui`. Luồng thiết lập thông thường thực hiện ngay trong 
 1. Nhấn **n** tạo workspace, hoặc **o** mở bộ truyện đã có. Nhấn **Ctrl+O** trong ô đường dẫn để duyệt thư mục.
 2. Nhấn **a** thêm tập và chọn EPUB Nhật. Tập tiếp theo tự gợi ý số thứ tự và tập trước.
 3. Nhấn **m** chọn giao thức, tên model và nhập API key. Key được che khi nhập, lưu vào `.env` của workspace; cấu hình model lưu ở `.translation_work/provider.json`.
-4. Nhấn **s** sửa quy ước bộ truyện; **c** chỉnh giới hạn requests, timeout, đường dẫn EPUBCheck và font.
+4. Nhấn **s** sửa quy ước riêng của bộ truyện; **l** chọn thư viện skill chung cho mọi bộ. Menu **Đọc / sửa skill chung** mở các skill nền dùng chung. Nhấn **c** chỉnh giới hạn requests, timeout, đường dẫn EPUBCheck và font.
 5. Chọn **Nhập EPUB**, rồi **Dịch / tiếp tục**. Nhấn **e** đọc/sửa bản dịch theo chương và đoạn; **Ctrl+S** lưu. Chọn **Review bản dịch** để đối chiếu lại phần đã sửa.
 6. Xử lý ảnh, kiểm tra và xuất EPUB bằng các mục trong menu.
 
@@ -82,6 +82,7 @@ Không cần tự tạo file cấu hình hoặc đặt biến môi trường cho
 | Enter | Thực hiện; ở biểu mẫu: sang ô tiếp theo/lưu ở ô cuối |
 | n / o / a | Tạo workspace / mở workspace / thêm tập, tại màn hình chính |
 | m / c / s / e | Model và key / cấu hình chạy / sửa quy ước / sửa bản dịch |
+| l | Chọn thư viện skill chung cho các workspace |
 | Tab / Shift+Tab | Đổi ô trong biểu mẫu |
 | ← / →, Home / End, Delete / Backspace | Di chuyển con trỏ và sửa nội dung ô nhập |
 | Ctrl+U | Xóa nội dung ô nhập |
@@ -126,7 +127,6 @@ workspace/bo-truyen/
 ├── .env                           # Key cục bộ nếu thiết lập model qua TUI
 ├── Skills/
 │   ├── SKILL.md                    # Quy ước riêng của bộ truyện
-│   ├── core/<skill-id>/SKILL.md    # Quy tắc chung đã cài
 │   ├── imported/                  # Ghi chú tham khảo đã import
 │   └── rules.json                 # Xuất hiện khi có quy tắc được lưu
 ├── vol01_translation/
@@ -216,6 +216,29 @@ run:
 `budget.book_usd` nằm trong file provider; `0` tắt giới hạn USD. Khi bật giới hạn mà giá request trước không xác định, runtime dừng thay vì đoán. Chi phí còn phụ thuộc token ngữ cảnh/quy ước, review, sửa lỗi, suy luận và retries; cần đo trên mẫu thật, không có giá cố định cho một tập.
 
 ## 5. Quy ước, thuật ngữ và xưng hô
+
+Skill được chia thành **thư viện chung cho mọi bộ** và **quy ước riêng trong mỗi workspace**. Thư viện chung mặc định nằm trong thư mục người dùng:
+
+```text
+~/.novel-translate/
+├── skills.json                    # Lưu thư mục chung đã chọn
+└── skills/
+    ├── jp-vn-translation/SKILL.md
+    ├── dialogue-and-honorifics/SKILL.md
+    └── translation-review/SKILL.md
+
+workspace/
+├── rezero/Skills/SKILL.md          # Chỉ quy ước riêng của Re:Zero
+└── bo-truyen-khac/Skills/SKILL.md   # Chỉ quy ước riêng của bộ khác
+```
+
+Trên Windows, `~` là thư mục người dùng, chẳng hạn `C:/Users/Phun`. Nhấn **l** trong TUI để đổi thư mục chung, ví dụ `D:/Light Novels/Skills`. Lựa chọn này được lưu cho mọi workspace dùng thư viện mặc định. Chương trình chỉ bổ sung ba skill mặc định còn thiếu, giữ nguyên các file đã có trong thư mục được chọn.
+
+Menu **Đọc / sửa skill chung (mọi bộ)** cho phép sửa file chung bằng Ctrl+S. Một lần sửa có tác động tới các bộ đang bật skill đó. Menu **Chọn skill chung dùng cho bộ này** chọn các module bằng danh sách ID; mặc định mọi bộ dùng ba module trên. Có thể thêm module theo dạng `<id>/SKILL.md` hoặc `<id>.md`, với `id` trong frontmatter trùng tên; sau đó bật ID trong TUI. Chọn đồng thời hai định nghĩa cùng ID sẽ báo lỗi.
+
+Workspace mới không sao chép skill chung vào `Skills/core/`. Các bản sao cũ ở đó được giữ nguyên nhưng không còn là nguồn mặc định. Khi nội dung mặc định giống bản cũ, thay vị trí file không làm mất hiệu lực của bản dịch đã lưu. Khi nội dung thực sự thay đổi, hệ thống đánh dấu phần bị ảnh hưởng để đối chiếu bằng `retranslate plan/apply`. Cấu hình nâng cao `skill_libraries` có sẵn vẫn chỉ tới các thư viện đã khai báo; các đường dẫn đó được đọc trực tiếp, không sao chép vào workspace.
+
+**Quy ước riêng của bộ truyện luôn ưu tiên khi xung đột với skill chung.** Quy ước Re:Zero giữ hậu tố theo nguồn vì vậy vẫn thắng hướng dẫn chung về hậu tố. Thuật ngữ, ghi chú, rules và lịch sử xưng hô riêng vẫn ở trong workspace của bộ, không được đưa vào thư viện chung.
 
 Nhấn **s** trong TUI để sửa `Skills/SKILL.md` của bộ truyện và **Ctrl+S** để lưu, hoặc mở file bằng trình soạn thảo của bạn. File mặc định có priority 100; quy ước riêng cần nêu rõ phạm vi và ưu tiên nguồn Nhật. Ví dụ:
 
@@ -380,7 +403,7 @@ go test -race -buildvcs=false -count=1 ./internal/translation/state ./internal/t
 
 CI khai báo test Windows/Linux, race trên Linux và một job kiểm chứng export bằng EPUBCheck thật. Workflow Docker/snapshot chạy thủ công. Có workflow không đồng nghĩa đã chạy thành công: xem logs của lần chạy cụ thể.
 
-Kiểm chứng ngày **20/10/2026**: toàn suite offline, export với EPUBCheck thật, vet/format và build Windows/Linux/macOS amd64/arm64 đều đạt trên checkout này. Đã mở binary Windows trực tiếp, tạo workspace, lưu model/key giả có che nội dung và mở trình sửa quy ước trong TUI; không gọi API trả phí. Script khởi chạy/syntax được thử qua Git Bash Windows. Chạy TUI/installer thực tế trên Linux/macOS, race test, Docker và nghiệm thu model thật vẫn cần môi trường tương ứng.
+Kiểm chứng ngày **21/10/2026**: toàn suite offline, export với EPUBCheck thật, vet/format và build Windows/Linux/macOS amd64/arm64 đạt. Đã kiểm tra hai workspace cùng đọc file skill chung, quy ước riêng không lẫn, nội dung mặc định không đổi vẫn giữ hiệu lực bản dịch cũ, và TUI chọn/sửa thư viện chung trên Windows. Kiểm tra cấu hình Compose đạt; chưa chạy container. Các lần kiểm tra này không gọi API trả phí. Chạy TUI/installer thực tế trên Linux/macOS, race test và nghiệm thu chất lượng bằng model thật vẫn cần môi trường tương ứng.
 
 Docker là tùy chọn: chuẩn bị `config/provider.json`, `tools/epubcheck/` và `workspace/`, rồi dùng `docker compose run --rm --build novel-translate tui`. Workspace được bind-mount nên `.env` bên trong từng workspace cũng được đọc tự động; Compose có thể chuyển `NOVEL_TRANSLATE_API_KEY` từ shell và giá trị không rỗng này được ưu tiên. Workspace trong container dùng đường dẫn Linux: đặt `provider_config: /root/.novel-translate/config.json` (hoặc bỏ trường này để dùng fallback) và checker `/tools/epubcheck/epubcheck.jar`; không dùng đường dẫn `D:/...` trong đó. Nếu thiết lập model bằng TUI, file provider và `.env` được lưu ngay trong workspace đó.
 

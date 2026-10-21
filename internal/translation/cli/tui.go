@@ -23,6 +23,7 @@ import (
 	"github.com/voocel/ainovel-cli/internal/bootstrap"
 	"github.com/voocel/ainovel-cli/internal/translation/engine"
 	"github.com/voocel/ainovel-cli/internal/translation/model"
+	"github.com/voocel/ainovel-cli/internal/translation/skills"
 	"github.com/voocel/ainovel-cli/internal/translation/state"
 	"github.com/voocel/ainovel-cli/internal/translation/workspace"
 )
@@ -37,7 +38,7 @@ hoặc chọn Mở/Tạo workspace trên màn hình chào.
 ↑/↓ chọn thao tác; ←/→ chọn tập; Enter thực hiện; PgUp/PgDn cuộn log.
 Esc hủy hộp thoại; Ctrl+C dừng tác vụ; q thoát khi rảnh.
 n/o: tạo/mở workspace; a: thêm tập; m: model/API key; c: giới hạn/checker.
-e: sửa bản dịch; s: sửa quy ước; ?: trợ giúp phím tắt.
+e: sửa bản dịch; s: quy ước riêng; l: thư viện skill chung; ?: trợ giúp.
 Trong biểu mẫu: Ctrl+O chọn file/thư mục; Ctrl+N đổi lựa chọn.
 Trong trình sửa: Ctrl+S lưu; Tab chuyển nguồn/bản dịch; Esc quay lại.
 API key nhập trong TUI được lưu vào .env và tự đọc ở lần mở sau.
@@ -119,7 +120,10 @@ func (m *translationTUI) actions() []tuiAction {
 		{label: "Thiết lập model / API key [m]", form: "model"},
 		{label: "Chọn file cấu hình API", form: "provider"},
 		{label: "Giới hạn chạy / EPUBCheck / font [c]", form: "settings"},
-		{label: "Sửa quy ước bộ truyện [s]", editor: "skill"},
+		{label: "Chọn thư viện skill chung (mọi bộ) [l]", form: "library"},
+		{label: "Đọc / sửa skill chung (mọi bộ)", editor: "shared"},
+		{label: "Chọn skill chung dùng cho bộ này", form: "enabled-skills"},
+		{label: "Sửa quy ước riêng của bộ truyện [s]", editor: "skill"},
 	}
 	if len(m.config.Volumes) > 0 {
 		actions = append(actions,
@@ -482,12 +486,15 @@ func (m *translationTUI) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "o":
 			m.openForm("open")
 			return m, textinput.Blink
-		case "a", "m", "c", "s", "e":
+		case "a", "m", "c", "s", "e", "l":
 			if m.config == nil {
 				m.notice = "Mở hoặc tạo workspace trước."
 				return m, nil
 			}
 			switch key {
+			case "l":
+				m.openForm("library")
+				return m, textinput.Blink
 			case "a":
 				m.openForm("add")
 				return m, textinput.Blink
@@ -586,6 +593,14 @@ func (m *translationTUI) openForm(kind string) {
 			path = bootstrap.DefaultConfigPath()
 		}
 		f.fields = []tuiField{{label: "File cấu hình provider JSON/JSONC", value: path, browse: true, extensions: []string{".json", ".jsonc"}}}
+	case "library":
+		path, err := skills.SharedDirectory()
+		if err != nil {
+			path, _ = skills.DefaultSharedDirectory()
+		}
+		f.fields = []tuiField{{label: "Thư mục skill chung (áp dụng mọi bộ)", value: path, browse: true, directory: true}}
+	case "enabled-skills":
+		f.fields = []tuiField{{label: "Skill ID dùng cho bộ này, cách nhau bằng dấu phẩy", value: strings.Join(m.config.EnabledSkills, ", ")}}
 	case "model":
 		protocol, modelName, baseURL, api, window := "openai", "", "", "chat", 0
 		if cfg, err := bootstrap.ReadConfigFile(providerPath(*m.config)); err == nil {
@@ -622,6 +637,9 @@ func (m *translationTUI) openForm(kind string) {
 	m.notice = ""
 	if kind == "model" {
 		m.notice = "Thiết lập nhanh dùng chung một model cho các role. Nếu cần nhiều model, chọn file cấu hình API có sẵn."
+	}
+	if kind == "library" {
+		m.notice = "Thư viện dùng chung cho mọi workspace mặc định. Skills/SKILL.md vẫn là quy ước riêng của từng bộ."
 	}
 	m.form = f
 }
@@ -682,7 +700,7 @@ func (m *translationTUI) submitForm() tea.Cmd {
 	var args []string
 	path := ""
 	switch f.kind {
-	case "model", "settings":
+	case "model", "settings", "library", "enabled-skills":
 		values := make([]string, len(f.fields))
 		for i, field := range f.fields {
 			values[i] = field.value
@@ -692,6 +710,14 @@ func (m *translationTUI) submitForm() tea.Cmd {
 		if f.kind == "model" {
 			operation = m.saveModelSetup
 			label = "Lưu model / API key"
+		}
+		if f.kind == "library" {
+			operation = m.saveLibraryForm
+			label = "Lưu thư viện skill chung"
+		}
+		if f.kind == "enabled-skills" {
+			operation = m.saveEnabledSkills
+			label = "Lưu skill cho bộ truyện"
 		}
 		m.submittedForm, m.form = f, nil
 		return m.startOperation(label, m.config.Root, operation(values))
@@ -757,7 +783,7 @@ func (m *translationTUI) submitForm() tea.Cmd {
 
 func (m *translationTUI) View() string {
 	if m.showHelp {
-		return "PHÍM TẮT TUI\n\nn: tạo workspace · o: mở workspace · a: thêm tập\nm: thiết lập model/API key · c: giới hạn/checker/font\ne: đọc/sửa bản dịch · s: sửa quy ước bộ truyện\n\nTrong ô nhập: Ctrl+O chọn file/thư mục · Ctrl+N đổi lựa chọn\n←/→ Home/End di chuyển con trỏ · Ctrl+U xóa ô\nTrong trình sửa: Ctrl+S lưu · Tab chuyển nguồn/bản dịch\nEsc quay lại; thay đổi chưa lưu có xác nhận trước khi bỏ.\n\nAPI key có thể lưu trong .env; không cần export mỗi lần.\nLinux/macOS: sh scripts/run.sh\n\nNhấn phím bất kỳ để quay lại."
+		return "PHÍM TẮT TUI\n\nn: tạo workspace · o: mở workspace · a: thêm tập\nm: thiết lập model/API key · c: giới hạn/checker/font\ne: đọc/sửa bản dịch · s: quy ước riêng · l: thư viện skill chung\nSkill chung dùng cho nhiều bộ; quy ước riêng luôn ưu tiên trong bộ đó.\n\nTrong ô nhập: Ctrl+O chọn file/thư mục · Ctrl+N đổi lựa chọn\n←/→ Home/End di chuyển con trỏ · Ctrl+U xóa ô\nTrong trình sửa: Ctrl+S lưu · Tab chuyển nguồn/bản dịch\nEsc quay lại; thay đổi chưa lưu có xác nhận trước khi bỏ.\n\nAPI key có thể lưu trong .env; không cần export mỗi lần.\nLinux/macOS: sh scripts/run.sh\n\nNhấn phím bất kỳ để quay lại."
 	}
 	if m.picker != nil {
 		return m.picker.view(m.width, m.height)

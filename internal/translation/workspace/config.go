@@ -174,6 +174,16 @@ func (c Config) Validate() error {
 	if !ValidID(c.Series.ID) {
 		return errors.New("series.id không hợp lệ")
 	}
+	seenSkills := map[string]bool{}
+	if len(c.EnabledSkills) == 0 {
+		return errors.New("cần ít nhất một skill chung trong enabled_skills")
+	}
+	for _, id := range c.EnabledSkills {
+		if !ValidID(id) || seenSkills[id] {
+			return errors.New("enabled_skills chứa ID không hợp lệ hoặc trùng")
+		}
+		seenSkills[id] = true
+	}
 	if c.SourceLanguage != "ja" || c.TargetLanguage != "vi" {
 		return errors.New("CLI chỉ hỗ trợ ja → vi")
 	}

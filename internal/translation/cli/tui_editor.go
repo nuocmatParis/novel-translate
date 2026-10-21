@@ -34,6 +34,8 @@ type tuiEditor struct {
 	base, fileHash       string
 	discard, sourceFocus bool
 	sourceScroll         int
+	sharedDirectory      string
+	sharedSkills         []skills.Skill
 }
 
 type tuiEditorLoadedMsg struct{ editor *tuiEditor }
@@ -43,6 +45,9 @@ type tuiEditorSavedMsg struct {
 }
 
 func (m *translationTUI) openEditor(kind string) tea.Cmd {
+	if kind == "shared" {
+		return m.openSharedEditor()
+	}
 	c := *m.config
 	var v workspace.Volume
 	if kind == "translation" {
@@ -138,8 +143,12 @@ func (e *tuiEditor) initInput(width, height int) tea.Cmd {
 	e.input.ShowLineNumbers = true
 	e.resize(width, height)
 	e.input.SetValue(e.base)
-	e.input.CursorStart()
-	return e.input.Focus()
+	focus := e.input.Focus()
+	// CursorStart only resets the column of the last line after SetValue.
+	// Start at the beginning of the document, including the viewport.
+	var move tea.Cmd
+	e.input, move = e.input.Update(tea.KeyMsg{Type: tea.KeyCtrlHome})
+	return tea.Batch(focus, move)
 }
 
 func (e *tuiEditor) resize(width, height int) {
@@ -199,6 +208,9 @@ func (m *translationTUI) updateEditor(msg tea.Msg) tea.Cmd {
 	}
 	if e.stage != "edit" {
 		index, count := &e.chapter, len(e.chapters)
+		if e.stage == "skills" {
+			count = len(e.sharedSkills)
+		}
 		if e.stage == "units" {
 			index, count = &e.unit, len(e.units)
 		}
@@ -212,6 +224,9 @@ func (m *translationTUI) updateEditor(msg tea.Msg) tea.Cmd {
 		case "pgdown":
 			*index = min(count-1, *index+10)
 		case "enter":
+			if e.stage == "skills" {
+				return m.selectSharedSkill()
+			}
 			if e.stage == "chapters" {
 				e.selectChapter()
 			} else {
@@ -259,6 +274,15 @@ func (m *translationTUI) updateEditor(msg tea.Msg) tea.Cmd {
 
 func (m *translationTUI) leaveEditor() {
 	e := m.editor
+	if e.kind == "shared" {
+		if e.stage == "edit" {
+			e.stage = "skills"
+			e.input.Blur()
+		} else {
+			m.editor = nil
+		}
+		return
+	}
 	switch {
 	case e.kind == "skill" || e.stage == "chapters":
 		m.editor = nil
@@ -277,6 +301,9 @@ func (m *translationTUI) saveEditor() tea.Cmd {
 	if text == base {
 		m.notice = "Không có thay đổi để lưu."
 		return nil
+	}
+	if kind == "shared" {
+		return m.saveSharedEditor()
 	}
 	c, v, book, generation, fileHash := e.config, e.volume, e.book, e.generation.ID, e.fileHash
 	id := ""
@@ -365,7 +392,10 @@ func (e *tuiEditor) view(width, height int, notice string, busy bool) string {
 	lines := []string{"SỬA BẢN DỊCH / QUY ƯỚC"}
 	if e.stage != "edit" {
 		index, count := e.chapter, len(e.chapters)
-		if e.stage == "units" {
+		if e.stage == "skills" {
+			count = len(e.sharedSkills)
+			lines = append(lines, "Skill chung cho các bộ truyện · "+e.sharedDirectory)
+		} else if e.stage == "units" {
 			index, count = e.unit, len(e.units)
 			lines = append(lines, "Chọn đoạn · "+e.chapters[e.chapter].Title)
 		} else {
@@ -375,7 +405,9 @@ func (e *tuiEditor) view(width, height int, notice string, busy bool) string {
 		start := max(0, min(index-visible/2, count-visible))
 		for i := start; i < min(count, start+visible); i++ {
 			label := ""
-			if e.stage == "chapters" {
+			if e.stage == "skills" {
+				label = e.sharedSkills[i].ID
+			} else if e.stage == "chapters" {
 				label = e.chapters[i].Title
 			} else {
 				label = e.generation.Units[e.units[i].ID].Target
@@ -397,6 +429,8 @@ func (e *tuiEditor) view(width, height int, notice string, busy bool) string {
 				lines = append(lines, clip(cleanTUIText(line)))
 			}
 			lines = append(lines, "Bản dịch Việt · giữ nguyên inline tokens ⟦…⟧")
+		} else if e.kind == "shared" {
+			lines = append(lines, "Skill chung · "+e.sharedSkills[e.chapter].ID+" · thay đổi ảnh hưởng nhiều bộ truyện")
 		} else {
 			lines = append(lines, "Quy ước riêng của bộ truyện · Markdown/YAML frontmatter")
 		}

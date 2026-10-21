@@ -3,11 +3,13 @@ package model
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/voocel/agentcore"
 	"github.com/voocel/ainovel-cli/internal/bootstrap"
 	"github.com/voocel/ainovel-cli/internal/llmcontract"
+	"github.com/voocel/ainovel-cli/internal/translation/domain"
 	"github.com/voocel/ainovel-cli/internal/translation/state"
 	"github.com/voocel/ainovel-cli/internal/translation/workspace"
 )
@@ -53,9 +55,29 @@ func TestAdapterMalformedContractUsageAndBudget(t *testing.T) {
 	}
 }
 func TestStrictSchemaReady(t *testing.T) {
-	for _, c := range []llmcontract.Contract{TranslationContract(), ReviewContract()} {
+	for _, c := range []llmcontract.Contract{TranslationContract(), ReviewContract(), ReviewContractFor("unit", "target-hash")} {
 		if e := llmcontract.ValidateStrictReady(c.Schema); e != nil {
 			t.Fatal(e)
 		}
+	}
+}
+
+func TestAdapterCorrectsInvalidReviewSeverity(t *testing.T) {
+	const hash = "current-revision-hash"
+	bad := `{"reviewed":[{"id":"unit","target_hash":"` + hash + `"}],"issues":[{"id":"i","type":"omission","severity":"major","block_id":"unit","source_quote":"雨","target_quote":"","explanation":"Mất mệnh đề."}],"ruby_decisions":[]}`
+	good := strings.Replace(bad, `"severity":"major"`, `"severity":"blocking"`, 1)
+	m := &responseModel{Responses: []*agentcore.LLMResponse{response(bad), response(good)}}
+	a := &Adapter{Models: &bootstrap.ModelSet{Default: bootstrap.NewSwappableModel("fake", "script", m, nil)}, Run: workspace.Defaults().Run, Store: state.Store{Root: t.TempDir()}}
+	a.Run.MaxRequests = 2
+	var out struct {
+		Issues []domain.Issue `json:"issues"`
+	}
+	checks := 0
+	err := a.Call(context.Background(), "translation_review", "Return a clause-level review.", map[string]string{"id": "unit", "target_hash": hash}, ReviewContractFor("unit", hash), &out, func() error { checks++; return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Calls != 2 || checks != 1 || len(out.Issues) != 1 || out.Issues[0].Severity != "blocking" {
+		t.Fatal("invalid severity accepted or blocking issue weakened", m.Calls, checks, out)
 	}
 }

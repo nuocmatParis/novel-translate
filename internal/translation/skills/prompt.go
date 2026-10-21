@@ -37,6 +37,13 @@ func (s Snapshot) Prompt(p domain.Position, source string, limit int) (string, [
 		if core.Len()+len(sk.Body)+2 > limit {
 			return "", nil, nil, fmt.Errorf("skill core vượt budget: %s", sk.ID)
 		}
+		if sk.Priority >= 100 {
+			const precedence = "\nSeries-specific instructions follow. They override conflicting shared defaults within this series; retain source fidelity.\n"
+			if core.Len()+len(precedence)+len(sk.Body)+2 > limit {
+				return "", nil, nil, fmt.Errorf("skill core vượt budget: %s", sk.ID)
+			}
+			core.WriteString(precedence)
+		}
 		core.WriteString("\n" + sk.Body + "\n")
 		used = append(used, sk.Path)
 	}

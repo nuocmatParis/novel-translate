@@ -9,7 +9,6 @@ import (
 	"sort"
 	"strings"
 
-	translationassets "github.com/voocel/ainovel-cli/assets/translation"
 	"github.com/voocel/ainovel-cli/internal/translation/domain"
 	"github.com/voocel/ainovel-cli/internal/translation/state"
 	"github.com/voocel/ainovel-cli/internal/translation/workspace"
@@ -17,14 +16,17 @@ import (
 )
 
 type Skill struct {
-	ID         string           `json:"id"`
-	Path       string           `json:"path"`
-	Hash       string           `json:"hash"`
-	Body       string           `json:"body"`
-	References []string         `json:"references,omitempty"`
-	From       domain.Position  `json:"from"`
-	Until      *domain.Position `json:"until,omitempty"`
-	Priority   int              `json:"priority"`
+	ID   string `json:"id"`
+	Path string `json:"path"`
+	// IdentityPath preserves historical dependency hashes when a shared file
+	// replaces its old workspace copy. Path remains the actual source location.
+	IdentityPath string           `json:"identity_path,omitempty"`
+	Hash         string           `json:"hash"`
+	Body         string           `json:"body"`
+	References   []string         `json:"references,omitempty"`
+	From         domain.Position  `json:"from"`
+	Until        *domain.Position `json:"until,omitempty"`
+	Priority     int              `json:"priority"`
 }
 type Snapshot struct {
 	Digest     string        `json:"digest"`
@@ -64,6 +66,10 @@ func (s Snapshot) Fingerprint(p domain.Position, source string) string {
 			}
 			sk.Body = strings.Join(selected, "\n\n")
 			sk.Hash = domain.Hash([]byte(sk.Body))
+		}
+		if sk.IdentityPath != "" {
+			sk.Path = sk.IdentityPath
+			sk.IdentityPath = ""
 		}
 		relevant = append(relevant, sk)
 	}
@@ -118,20 +124,8 @@ func Parse(path string, b []byte) (Skill, error) {
 	return s, nil
 }
 func InstallDefaults(c workspace.Config) error {
-	for _, id := range c.EnabledSkills {
-		b, e := translationassets.Files.ReadFile("skills/" + id + ".md")
-		if e != nil {
-			return e
-		}
-		p, e := c.WritePath(filepath.ToSlash(filepath.Join("Skills", "core", id, "SKILL.md")))
-		if e != nil {
-			return e
-		}
-		if _, e = os.Stat(p); errors.Is(e, os.ErrNotExist) {
-			if e = state.Atomic(p, b); e != nil {
-				return e
-			}
-		}
+	if _, err := EnsureShared(); err != nil {
+		return err
 	}
 	p, e := c.WritePath(c.SeriesSkill)
 	if e != nil {
@@ -144,19 +138,23 @@ func InstallDefaults(c workspace.Config) error {
 }
 func Load(c workspace.Config) (Snapshot, error) {
 	s := Snapshot{}
+	libraries := c.SkillLibraries
+	shared := len(libraries) == 0
+	if shared {
+		directory, err := EnsureShared()
+		if err != nil {
+			return s, err
+		}
+		libraries = []string{directory}
+	}
 	for _, id := range c.EnabledSkills {
 		var found []string
-		local := c.ReadPath(filepath.Join("Skills", "core", id, "SKILL.md"))
-		if _, e := os.Stat(local); e == nil {
-			found = append(found, local)
-		}
-		for _, lib := range c.SkillLibraries {
-			for _, rel := range []string{filepath.Join(id, "SKILL.md"), id + ".md"} {
-				p := filepath.Join(c.ReadPath(lib), rel)
-				if _, e := os.Stat(p); e == nil {
-					found = append(found, p)
-				}
+		for _, lib := range libraries {
+			paths, err := skillFiles(c.ReadPath(lib), id)
+			if err != nil {
+				return s, err
 			}
+			found = append(found, paths...)
 		}
 		if len(found) == 0 {
 			return s, fmt.Errorf("thiếu skill %s", id)
@@ -174,6 +172,13 @@ func Load(c workspace.Config) (Snapshot, error) {
 		}
 		if sk.ID != id {
 			return s, fmt.Errorf("skill ID không khớp: %s", id)
+		}
+		if shared {
+			sk.IdentityPath = c.ReadPath(filepath.Join("Skills", "core", id, "SKILL.md"))
+		}
+		// Series instructions always override shared defaults.
+		if sk.Priority >= 100 {
+			sk.Priority = 99
 		}
 		s.Skills = append(s.Skills, sk)
 	}
@@ -214,7 +219,11 @@ func Load(c workspace.Config) (Snapshot, error) {
 			if e != nil {
 				return s, fmt.Errorf("skill reference %s: %w", r, e)
 			}
-			s.Skills = append(s.Skills, Skill{ID: sk.ID + ":" + r, Path: p, Hash: domain.Hash(b), Body: string(b), From: sk.From, Until: sk.Until, Priority: sk.Priority})
+			identity := ""
+			if sk.IdentityPath != "" {
+				identity = filepath.Join(filepath.Dir(sk.IdentityPath), filepath.FromSlash(r))
+			}
+			s.Skills = append(s.Skills, Skill{ID: sk.ID + ":" + r, Path: p, IdentityPath: identity, Hash: domain.Hash(b), Body: string(b), From: sk.From, Until: sk.Until, Priority: sk.Priority})
 		}
 	}
 	core := s
