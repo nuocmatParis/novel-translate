@@ -1,10 +1,12 @@
 .PHONY: build run test vet install
 
-build:
-	go build -trimpath -o novel-translate-cli ./cmd/novel-translate-cli
+APP_BINARY = bin/novel-translate-cli$(if $(filter Windows_NT,$(OS)),.exe,)
 
-run: build
-	./novel-translate-cli tui
+build:
+	go build -trimpath -ldflags="-s -w" -o $(APP_BINARY) ./cmd/novel-translate-cli
+
+run:
+	go run -trimpath -ldflags="-s -w" ./cmd/novel-translate-cli tui
 
 test:
 	go test -buildvcs=false -count=1 ./...

@@ -10,34 +10,44 @@ Phần lõi có kiểm thử offline và kiểm tra EPUB bằng EPUBCheck. Chấ
 
 | Thành phần | Khi nào cần |
 | --- | --- |
-| Go **1.25.5+** | Build từ mã nguồn; không cần khi dùng binary |
+| Go **1.25.5+** | Chạy từ mã nguồn |
 | API key và model phù hợp | Dịch, review và AI đề xuất quy ước |
 | Java và EPUBCheck | Xuất EPUB hoàn chỉnh có kiểm chứng định dạng |
 | Bốn font Liberation Serif | Tùy chọn, để nhúng font vào EPUB |
 
 Import, xem tiến độ, xuất ảnh và mở TUI không cần API key. Không cần Python, Docker hay Ollama để chạy CLI với API cloud. Các script nghiệm thu bổ sung dùng Python 3; chạy race test cần cgo và C compiler.
 
-Build trên Windows, trong thư mục repo:
+Chạy từ source trên Windows, trong thư mục repo:
 
 ```powershell
-go build -trimpath -o novel-translate-cli.exe ./cmd/novel-translate-cli
-.\novel-translate-cli.exe --help
+.\scripts\run.ps1
+
+# Truyền lệnh CLI qua script
+.\scripts\run.ps1 --help
 ```
 
 Linux/macOS:
 
 ```sh
-# Trong thư mục repo; tự build nếu chưa có binary, rồi mở TUI
+# Trong thư mục repo; biên dịch source hiện tại rồi mở TUI
 sh scripts/run.sh
 
-# Hoặc dùng Make để build lại mỗi lần chạy
+# Hoặc dùng Make
 make run
 
 # Truyền lệnh CLI qua script
 sh scripts/run.sh status --workspace ./workspace/bo-truyen
 ```
 
-Sau khi cập nhật mã nguồn, chạy `make build` hoặc `go build -trimpath -o novel-translate-cli ./cmd/novel-translate-cli` để thay binary cũ. `scripts/run.sh` dùng lại binary đã có.
+Các script dùng `go run`: mỗi lần mở đều biên dịch từ source hiện tại, Go tự dùng cache cho phần không đổi. Không cần giữ `.exe` trong thư mục gốc. Mặc định mở TUI; tham số truyền sau script được chuyển cho CLI. Script chạy tại thư mục repo, nên đường dẫn tương đối được tính từ đó.
+
+Có thể chạy trực tiếp, không qua script:
+
+```powershell
+go run -trimpath -ldflags="-s -w" ./cmd/novel-translate-cli tui
+```
+
+Nếu cần binary riêng để đóng gói hoặc dùng mã thoát CLI chính xác, `make build` đặt file duy nhất trong `bin/`. Không có Make trên Windows thì dùng `go build -trimpath -ldflags="-s -w" -o bin/novel-translate-cli.exe ./cmd/novel-translate-cli`. Khi chạy qua `go run`, lỗi của ứng dụng được trả về shell với mã `1`; mã gốc vẫn hiện trong thông báo `exit status`.
 
 Cài vào thư mục người dùng trên Linux/macOS:
 
@@ -50,63 +60,65 @@ Script build checkout hiện tại vào `~/.local/bin`; biến `NOVEL_TRANSLATE_
 
 Workflow CI tạo artifacts Windows/Linux. Workflow đóng gói được kích hoạt thủ công và tạo snapshot cho Windows/Linux/macOS, amd64/arm64; không tự phát hành GitHub Release. Build chéo chưa chứng minh chạy thực tế trên mọi hệ điều hành.
 
-Các ví dụ sau dùng **PowerShell** và binary trong thư mục hiện tại. Trên Linux/macOS, thay `.\novel-translate-cli.exe` bằng `./novel-translate-cli`. Đường dẫn và tên model trong ví dụ cần thay theo máy/dịch vụ của bạn.
+Các ví dụ sau dùng **PowerShell** và script chạy source trong thư mục repo. Trên Linux/macOS, thay `.\scripts\run.ps1` bằng `sh scripts/run.sh`. Đường dẫn và tên model trong ví dụ cần thay theo máy/dịch vụ của bạn.
 
 ## 2. Mở TUI
 
 ```powershell
-.\novel-translate-cli.exe tui
+.\scripts\run.ps1
 ```
 
-Chạy binary không có đối số trong terminal cũng mở TUI; `--help` xem trợ giúp CLI. Chọn **Mở workspace** hoặc **Tạo workspace mới**. Nếu thư mục hiện tại có `workspace.yaml`, TUI mở workspace đó. Có thể chỉ định ngay:
+Chạy script không có đối số cũng mở TUI; `--help` xem phím tắt. Nếu thư mục hiện tại có `workspace.yaml`, ứng dụng mở workspace đó. Nếu không, màn **Khởi đầu** hiển thị workspace gần đây và các workspace trong `workspace/`; **o** mở bằng đường dẫn, **n** tạo mới chỉ từ tên bộ truyện. CLI vẫn cho phép chỉ định trực tiếp:
 
 ```powershell
-.\novel-translate-cli.exe tui --workspace .\workspace\bo-truyen --volume vol01
+.\scripts\run.ps1 tui --workspace .\workspace\bo-truyen --volume vol01
 ```
 
-Alias: `--tui`. Luồng thiết lập thông thường thực hiện ngay trong TUI:
+Alias: `--tui`. Trong workspace, **a** đăng ký tập bằng ID, thứ tự, đường dẫn EPUB và tập trước; **Ctrl+O** mở file picker ở trường đường dẫn; **i** import snapshot nguồn. Cấu hình nằm trong màn **Cấu hình**: provider/model/key, giới hạn request, thư mục xuất, EPUBCheck và font. Key được che khi nhập; API key được lưu trong `.env` của workspace.
 
-1. Nhấn **n** tạo workspace, hoặc **o** mở bộ truyện đã có. Nhấn **Ctrl+O** trong ô đường dẫn để duyệt thư mục.
-2. Nhấn **a** thêm tập và chọn EPUB Nhật. Tập tiếp theo tự gợi ý số thứ tự và tập trước.
-3. Nhấn **m** chọn giao thức, tên model và nhập API key. Key được che khi nhập, lưu vào `.env` của workspace; cấu hình model lưu ở `.translation_work/provider.json`.
-4. Nhấn **s** sửa quy ước riêng của bộ truyện; **l** chọn thư viện skill chung cho mọi bộ. Menu **Đọc / sửa skill chung** mở các skill nền dùng chung. Nhấn **c** chỉnh giới hạn requests, timeout, đường dẫn EPUBCheck và font.
-5. Chọn **Nhập EPUB**, rồi **Dịch / tiếp tục**. Nhấn **e** đọc/sửa bản dịch theo chương và đoạn; **Ctrl+S** lưu. Chọn **Review bản dịch** để đối chiếu lại phần đã sửa.
-6. Xử lý ảnh, kiểm tra và xuất EPUB bằng các mục trong menu.
+Từ **Bộ truyện & nội dung**, chọn tập/chương và nhấn **Enter** tại chế độ chạy để bắt đầu dịch hoặc review. Tác vụ model chỉ bắt đầu sau hành động này; mở màn, xem dữ liệu và đổi focus không gọi model. **p** pause/resume dịch/review tại ranh giới khối; **Ctrl+C** yêu cầu dừng. **Bản dịch** có so sánh JP–VI, sửa tay bằng **Ctrl+S**, nguồn/Ruby, lịch sử generation và ghi chú riêng theo khối. Ghi chú gắn với hash nguồn, được lưu riêng và không đưa vào target hoặc prompt; **Ctrl+S** lưu loại nội dung ở tab đang mở. **Reviewer** hiển thị issue, bằng chứng, ruby, signals và cho phép review lại, sửa tay hoặc giữ bản kèm lý do. **Kiểm tra & EPUB** hỗ trợ đánh giá occurrence ảnh, xuất preview và xuất Final sau khi các cổng trước đạt; Final chỉ ghi file sau readback và EPUBCheck thành công.
 
-Không cần tự tạo file cấu hình hoặc đặt biến môi trường cho luồng này. Thiết lập model nhanh dùng **một model mặc định cho cả ba role** và giữ giới hạn budget cũ; không chuyển các override/fallback riêng từ file cũ. Với cấu hình nhiều model, dùng **Chọn file cấu hình API**. Các thao tác revision, research và scene chi tiết vẫn có CLI.
+TUI dùng dark mode nhiều khung (background `#07141B`, panel `#0B1B26`, border `#344A5E`, accent `#1677FF`), co giãn theo terminal. Dưới `80×24`, giao diện giữ hướng dẫn dừng/thoát/trợ giúp và yêu cầu mở rộng terminal.
+
+Các màn hình chính:
+- **S00. Mở / Tạo workspace**: Đọc metadata các bộ đã có thành danh sách để chọn; tạo bộ mới chỉ bằng tên.
+- **S01. Dashboard**: Thống kê tổng quan, các tập, các blocking issues, tiến độ đối chiếu.
+- **S02. Bộ truyện & nội dung**: Xem tập/chương và chọn toàn tập, chương đã đánh dấu hoặc review lại.
+- **S03. Tác vụ đang chạy**: Theo dõi sự kiện dịch/review/import/export; pause tại ranh giới khối chỉ dành cho dịch/review.
+- **S04. Bản dịch (Editor)**: Cây khối nguồn, JP–VI, sửa tay tạo revision mới (`Ctrl+S`), nguồn/Ruby, lịch sử generation và ghi chú riêng gắn với hash nguồn.
+- **S05. Reviewer**: Hàng đợi, issue và bằng chứng, ruby, signals, quyết định giữ có lý do, review lại và mở editor.
+- **S06. Skills & thuật ngữ**: Quy ước chung/riêng, rules, candidates và dữ liệu research đã lưu.
+- **S07. Ngữ cảnh & trí nhớ**: Cặp xưng hô có hướng, mốc truyện, bằng chứng ngữ cảnh.
+- **S08. Kiểm tra & xuất EPUB**: Checklist từ dữ liệu nguồn/generation, đánh giá ảnh, preview/final và kết quả readback/EPUBCheck.
+- **S09. Cấu hình**: Provider, model, API key (được che và lưu trong `.env`), giới hạn tác vụ và công cụ kiểm tra.
+- **S10. Báo cáo & usage**: Thống kê chi phí USD, input/output tokens và số lượng requests (phân biệt rõ requests chưa xác định đơn giá).
 
 | Phím | Thao tác |
 | --- | --- |
-| ↑ / ↓ hoặc j / k | Chọn thao tác |
-| ← / → | Chọn tập |
-| Enter | Thực hiện; ở biểu mẫu: sang ô tiếp theo/lưu ở ô cuối |
-| n / o / a | Tạo workspace / mở workspace / thêm tập, tại màn hình chính |
-| m / c / s / e | Model và key / cấu hình chạy / sửa quy ước / sửa bản dịch |
-| l | Chọn thư viện skill chung cho các workspace |
-| Tab / Shift+Tab | Đổi ô trong biểu mẫu |
-| ← / →, Home / End, Delete / Backspace | Di chuyển con trỏ và sửa nội dung ô nhập |
-| Ctrl+U | Xóa nội dung ô nhập |
-| Ctrl+O | Duyệt file/thư mục trong ô đường dẫn; Space chọn thư mục đang mở |
-| Ctrl+N | Đổi lựa chọn giao thức, API hoặc cách xử lý ảnh |
-| Ctrl+S | Lưu trong trình sửa bản dịch/quy ước |
-| Tab | Trong trình sửa bản dịch: chuyển giữa nguồn Nhật và bản dịch Việt |
-| ? | Xem trợ giúp phím tắt tại màn hình chính |
-| r | Làm mới tiến độ |
-| PgUp / PgDn | Cuộn nhật ký |
-| Esc | Hủy hộp thoại; khi đang chạy thì dừng tác vụ |
-| Ctrl+C | Dừng tác vụ; khi rảnh thì thoát |
-| q | Tại màn hình chính: thoát; nếu đang chạy, dừng và chờ tác vụ kết thúc |
-
-Dịch/review yêu cầu xác nhận `y` trước khi gọi API. Trong trình sửa, Esc hỏi trước khi bỏ nội dung chưa lưu; lưu bị lỗi vẫn giữ nội dung đang nhập. Nếu bản dịch, quy ước hoặc cấu hình workspace đã được cập nhật ở nơi khác, TUI báo xung đột để bạn đối chiếu. Trình sửa hiển thị xuống dòng kiểu LF và tab thành bốn dấu cách; khi lưu phần đã sửa dùng định dạng này. File quá 9999 dòng hoặc có ký tự không hỗ trợ được giữ nguyên và báo lỗi khi mở. Nhật ký trên màn hình giữ tối đa 500 dòng; dữ liệu lâu dài nằm trong workspace.
+| Tab | Chuyển vùng focus giữa Sidebar menu và nội dung các panel |
+| ↑ / ↓ hoặc j / k | Chọn dòng / di chuyển trong danh sách bảng |
+| ← / → | Chuyển tab / đóng mở nhánh cây |
+| Enter | Mở mục đang chọn; thực hiện hành động |
+| Space | Chọn / bỏ chọn chương trong màn chọn phạm vi |
+| Ctrl+S | Lưu bản dịch, ghi chú riêng hoặc cấu hình theo màn/tab đang mở |
+| Ctrl+O | Chọn file hoặc thư mục tại trường đường dẫn |
+| p | Tạm dừng / tiếp tục tác vụ tại ranh giới khối kế tiếp (ở màn Tác vụ) |
+| k | Giữ bản dịch hiện tại và nhập lý do bắt buộc (ở màn Reviewer) |
+| r | Yêu cầu reviewer chấm lại khối được chọn (ở màn Reviewer) |
+| e | Chuyển sang màn hình sửa tay cho khối đang xem (ở màn Reviewer) |
+| Esc | Hủy hộp thoại / quay lại màn trước (tác vụ chạy nền vẫn tiếp tục) |
+| Ctrl+C | Dừng khẩn cấp tác vụ đang chạy và giải phóng khóa writer |
+| q | Thoát ứng dụng khi ở trạng thái rảnh |
+| ? | Mở bảng trợ giúp phím tắt theo ngữ cảnh màn hình hiện tại |
 
 ## 3. Tạo workspace và nhập tập đầu
 
 ```powershell
 $workspacePath = Join-Path $PWD 'workspace/bo-truyen'
-.\novel-translate-cli.exe init $workspacePath --series bo-truyen --title "Tên bộ truyện"
-.\novel-translate-cli.exe volume add --workspace $workspacePath --id vol01 --order 1 --source "D:/Sach/Tap01_JP.epub"
-.\novel-translate-cli.exe import --workspace $workspacePath --volume vol01
-.\novel-translate-cli.exe status --workspace $workspacePath
+.\scripts\run.ps1 init $workspacePath --series bo-truyen --title "Tên bộ truyện"
+.\scripts\run.ps1 volume add --workspace $workspacePath --id vol01 --order 1 --source "D:/Sach/Tap01_JP.epub"
+.\scripts\run.ps1 import --workspace $workspacePath --volume vol01
+.\scripts\run.ps1 status --workspace $workspacePath
 ```
 
 Truyền trực tiếp file EPUB, không cần giải nén. `import` lập kiểm kê nguồn và mapping các khối văn bản, chương, ảnh, thuộc tính và chú thích. Thứ tự đọc lấy từ spine/anchors, không theo tên file. Nội dung chưa hỗ trợ được ghi rõ và có thể chặn xuất hoàn chỉnh.
@@ -114,7 +126,7 @@ Truyền trực tiếp file EPUB, không cần giải nén. `import` lập kiể
 Thêm tập tiếp theo vào cùng workspace:
 
 ```powershell
-.\novel-translate-cli.exe volume add --workspace $workspacePath --id vol02 --order 2 --previous vol01 --source "D:/Sach/Tap02_JP.epub"
+.\scripts\run.ps1 volume add --workspace $workspacePath --id vol02 --order 2 --previous vol01 --source "D:/Sach/Tap02_JP.epub"
 ```
 
 `--previous` nối ngữ cảnh đã được chấp nhận của tập trước. Dữ liệu xưng hô được giới hạn theo thời điểm/cảnh; không lấy trạng thái cuối truyện áp cho hồi tưởng.
@@ -141,7 +153,7 @@ File nguồn ngoài workspace chỉ được đọc. Đường dẫn tương đ�
 
 ## 4. Cấu hình model
 
-Cách nhanh: mở TUI và nhấn **m**, không cần lệnh đặt biến môi trường. Ô API OpenAI chỉ áp dụng cho giao thức `openai`; Gemini/Anthropic dùng giao thức native. Để trống key khi lưu lại sẽ dùng key hiện có. Nếu đổi dịch vụ, nhập key tương ứng của dịch vụ mới.
+Cách nhanh: mở **Cấu hình → Provider & Model**, không cần lệnh đặt biến môi trường. Ô API OpenAI chỉ áp dụng cho giao thức `openai`; Gemini/Anthropic dùng giao thức native. Để trống key khi lưu lại sẽ dùng key hiện có. Nếu đổi dịch vụ, nhập key tương ứng của dịch vụ mới.
 
 Nếu muốn cấu hình nâng cao bằng file, chọn một mẫu:
 
@@ -182,7 +194,7 @@ NOVEL_TRANSLATE_API_KEY=YOUR_API_KEY
 
 TUI giữ các biến khác khi cập nhật `.env`, nhưng có thể định dạng lại file và bỏ comment. Key được lưu dạng văn bản trong file cục bộ; file do ứng dụng tạo dùng quyền `0600` trên hệ thống POSIX. Repo và Docker build context đã loại `.env`/`.env.*`, trừ mẫu `.env.example` được theo dõi trong Git.
 
-Trong TUI, dùng **Chọn file cấu hình API** để gắn file provider vào workspace. Hoặc sửa `workspace/bo-truyen/workspace.yaml`, thêm/sửa dòng ở cấp ngoài cùng:
+Trong TUI, mở **Cấu hình → Provider & Model** để nhập provider/model/key. Cấu hình provider được lưu trong workspace. Nếu cần nhiều provider, roles hoặc fallback riêng, giữ cấu hình JSON hiện có và trỏ `provider_config` ở cấp ngoài cùng trong `workspace.yaml`:
 
 ```yaml
 provider_config: ../../config/provider.jsonc
@@ -196,7 +208,7 @@ Endpoint nội bộ không xác thực có thể dùng `allow_no_api_key: true` 
 
 ### Giới hạn khi chạy thử
 
-Trong TUI, nhấn **c** để đổi giới hạn requests và timeout. Các tùy chọn chi tiết có thể sửa trong phần `run` đã có của `workspace.yaml`, không tạo thêm phần `run` trùng lặp:
+Trong TUI, mở **Cấu hình → Giới hạn tác vụ** để đổi limits. Các tùy chọn chi tiết có thể sửa trong phần `run` đã có của `workspace.yaml`, không tạo thêm phần `run` trùng lặp:
 
 ```yaml
 run:
@@ -232,15 +244,15 @@ workspace/
 └── bo-truyen-khac/Skills/SKILL.md   # Chỉ quy ước riêng của bộ khác
 ```
 
-Trên Windows, `~` là thư mục người dùng, chẳng hạn `C:/Users/Phun`. Nhấn **l** trong TUI để đổi thư mục chung, ví dụ `D:/Light Novels/Skills`. Lựa chọn này được lưu cho mọi workspace dùng thư viện mặc định. Chương trình chỉ bổ sung ba skill mặc định còn thiếu, giữ nguyên các file đã có trong thư mục được chọn.
+Trên Windows, `~` là thư mục người dùng, chẳng hạn `C:/Users/Phun`. Thư viện skill chung được nạp theo cấu hình hiện có; màn **Skills & thuật ngữ** hiển thị nội dung đang dùng. Thay đổi `skill_libraries` trong `workspace.yaml` nếu cần trỏ sang thư viện khác.
 
-Menu **Đọc / sửa skill chung (mọi bộ)** cho phép sửa file chung bằng Ctrl+S. Một lần sửa có tác động tới các bộ đang bật skill đó. Menu **Chọn skill chung dùng cho bộ này** chọn các module bằng danh sách ID; mặc định mọi bộ dùng ba module trên. Có thể thêm module theo dạng `<id>/SKILL.md` hoặc `<id>.md`, với `id` trong frontmatter trùng tên; sau đó bật ID trong TUI. Chọn đồng thời hai định nghĩa cùng ID sẽ báo lỗi.
+Trong màn **Skills & thuật ngữ**, nhấn **Space** để bật/tắt skill chung cho workspace, **Ctrl+S** để lưu, **e** để sửa skill đang chọn và **l** để chọn thư mục thư viện chung. Sửa skill chung có thể ảnh hưởng các workspace đang bật skill đó. Có thể thêm module theo dạng `<id>/SKILL.md` hoặc `<id>.md`, với `id` trong frontmatter trùng tên; sau đó bật ID trong TUI. Chọn đồng thời hai định nghĩa cùng ID sẽ báo lỗi.
 
 Workspace mới không sao chép skill chung vào `Skills/core/`. Các bản sao cũ ở đó được giữ nguyên nhưng không còn là nguồn mặc định. Khi nội dung mặc định giống bản cũ, thay vị trí file không làm mất hiệu lực của bản dịch đã lưu. Khi nội dung thực sự thay đổi, hệ thống đánh dấu phần bị ảnh hưởng để đối chiếu bằng `retranslate plan/apply`. Cấu hình nâng cao `skill_libraries` có sẵn vẫn chỉ tới các thư viện đã khai báo; các đường dẫn đó được đọc trực tiếp, không sao chép vào workspace.
 
 **Quy ước riêng của bộ truyện luôn ưu tiên khi xung đột với skill chung.** Quy ước Re:Zero giữ hậu tố theo nguồn vì vậy vẫn thắng hướng dẫn chung về hậu tố. Thuật ngữ, ghi chú, rules và lịch sử xưng hô riêng vẫn ở trong workspace của bộ, không được đưa vào thư viện chung.
 
-Nhấn **s** trong TUI để sửa `Skills/SKILL.md` của bộ truyện và **Ctrl+S** để lưu, hoặc mở file bằng trình soạn thảo của bạn. File mặc định có priority 100; quy ước riêng cần nêu rõ phạm vi và ưu tiên nguồn Nhật. Ví dụ:
+Màn **Skills & thuật ngữ** hiển thị dữ liệu đang dùng và cho sửa skill chung hoặc `Skills/SKILL.md` với kiểm tra hash trước khi ghi. File mặc định có priority 100; quy ước riêng cần nêu rõ phạm vi và ưu tiên nguồn Nhật. Ví dụ:
 
 ```markdown
 ---
@@ -257,17 +269,17 @@ priority: 100
 Tránh đưa tình tiết tương lai vào chỉ dẫn chung. Quy tắc chung, quy ước riêng và dữ liệu tham khảo có scope/version; xung đột quy tắc đã chốt cần được giải quyết rõ ràng.
 
 ```powershell
-.\novel-translate-cli.exe skill list --workspace $workspacePath
-.\novel-translate-cli.exe skill import --workspace $workspacePath --source "D:/GhiChu/quy-uoc.md"
-.\novel-translate-cli.exe skill import --workspace $workspacePath --source "D:/GhiChu/tap26-27.md" --from-volume 26 --until-volume 28
+.\scripts\run.ps1 skill list --workspace $workspacePath
+.\scripts\run.ps1 skill import --workspace $workspacePath --source "D:/GhiChu/quy-uoc.md"
+.\scripts\run.ps1 skill import --workspace $workspacePath --source "D:/GhiChu/tap26-27.md" --from-volume 26 --until-volume 28
 ```
 
 `until-volume` là cận trên **không bao gồm**. Import giữ văn bản, hash và nguồn; không biến mọi ghi chú thành quy tắc đã xác nhận. Đoạn chưa rõ phạm vi được giữ riêng. AI tạo quy ước dùng bản dịch đã được chấp nhận; nếu thiếu cơ sở, mục mới vẫn là candidate/conflict.
 
 ```powershell
-.\novel-translate-cli.exe skill research --workspace $workspacePath --volume vol01 --term "Thuật ngữ có trong nguồn"
-.\novel-translate-cli.exe skill generate --workspace $workspacePath --volume vol01
-.\novel-translate-cli.exe skill resolve --workspace $workspacePath --id RULE_ID --decision confirm --reason "Căn cứ xác nhận"
+.\scripts\run.ps1 skill research --workspace $workspacePath --volume vol01 --term "Thuật ngữ có trong nguồn"
+.\scripts\run.ps1 skill generate --workspace $workspacePath --volume vol01
+.\scripts\run.ps1 skill resolve --workspace $workspacePath --id RULE_ID --decision confirm --reason "Căn cứ xác nhận"
 ```
 
 Research cần khai báo `research_sources` trong YAML: `api` hỗ trợ `fetch` (URL cụ thể), `mediawiki` (site dùng API MediaWiki) hoặc `json` (endpoint tìm kiếm trả danh sách URL). Mỗi nguồn có `id`, `base_url`, `edition`, `kind`. Chỉ fetch/redirect trong origin đã cấu hình; lưu URL, hash nội dung và thời điểm. Nguồn official/fandom là bằng chứng tham khảo, không thay nguyên tác và không được tạo URL giả. Dùng `retranslate plan` sau khi đổi quy ước ảnh hưởng bản dịch cũ.
@@ -275,27 +287,27 @@ Research cần khai báo `research_sources` trong YAML: `api` hỗ trợ `fetch`
 ## 6. Dịch, xem tiến độ và sửa tay
 
 ```powershell
-.\novel-translate-cli.exe translate --workspace $workspacePath --volume vol01
-.\novel-translate-cli.exe status --workspace $workspacePath --json
-.\novel-translate-cli.exe resume --workspace $workspacePath --volume vol01
+.\scripts\run.ps1 translate --workspace $workspacePath --volume vol01
+.\scripts\run.ps1 status --workspace $workspacePath --json
+.\scripts\run.ps1 resume --workspace $workspacePath --volume vol01
 ```
 
 Luồng tự dịch → review → sửa trong giới hạn rồi tiếp tục; dừng nếu còn vấn đề chặn, xung đột hoặc chạm giới hạn. Ctrl+C yêu cầu dừng. `resume` dùng lại kết quả hợp lệ đã lưu; request đã gửi nhưng chưa lưu kết quả có thể phải gọi lại và tính phí lại.
 
-Trong TUI, nhấn **e**, chọn chương rồi đoạn cần sửa. Nguồn Nhật hiển thị phía trên; Tab chuyển vùng để cuộn nguồn hoặc nhập bản dịch. **Ctrl+S** lưu revision và cập nhật Markdown cùng lúc, không cần chạy `sync`. Inline tokens `⟦…⟧` phải giữ nguyên; bản sửa làm mất token hoặc đổi nguồn sẽ bị từ chối. Bản sửa và ngữ cảnh phía sau cần được review lại.
+Trong TUI, mở **Bản dịch**, chọn khối trong cây nguồn rồi chuyển sang tab **Bản dịch (Sửa)**. Nguồn Nhật hiển thị ở tab so sánh; **Ctrl+S** lưu revision và cập nhật Markdown cùng lúc, không cần chạy `sync`. Tab **Ghi chú** lưu riêng theo khối và hash nguồn trong `volumes/<id>/notes.json`; ghi chú không đi vào target hoặc prompt, và được đánh dấu cần đối chiếu khi nguồn đổi. Inline tokens `⟦…⟧` phải giữ nguyên; bản sửa làm mất token hoặc đổi nguồn sẽ bị từ chối. Bản sửa và ngữ cảnh phía sau cần được review lại.
 
 Nếu sửa bằng trình soạn thảo ngoài, chỉ đổi văn bản giữa `<!-- unit:ID -->` và `<!-- /unit -->` trong `vol01_translation/chapters/*.md`. Giữ nguyên markers, thứ tự và inline tokens `⟦…⟧`. Sau đó:
 
 ```powershell
-.\novel-translate-cli.exe sync --workspace $workspacePath --volume vol01
-.\novel-translate-cli.exe review --workspace $workspacePath --volume vol01 --chapter CHAPTER_ID
+.\scripts\run.ps1 sync --workspace $workspacePath --volume vol01
+.\scripts\run.ps1 review --workspace $workspacePath --volume vol01 --chapter CHAPTER_ID
 ```
 
 `CHAPTER_ID` lấy từ `status --json`. Bản sửa tay được lưu thành revision riêng; cần review hoặc quyết định giữ có lý do. Khi đổi nguồn, quy ước hoặc ngữ cảnh:
 
 ```powershell
-.\novel-translate-cli.exe retranslate plan --workspace $workspacePath --volume vol01
-.\novel-translate-cli.exe retranslate apply --workspace $workspacePath --plan PLAN_ID
+.\scripts\run.ps1 retranslate plan --workspace $workspacePath --volume vol01
+.\scripts\run.ps1 retranslate apply --workspace $workspacePath --plan PLAN_ID
 ```
 
 Đọc plan trước khi apply. `PLAN_ID` do lệnh plan trả về. File EPUB nguồn thay đổi phải qua `source plan` / `source apply`. `restore --generation GENERATION_ID` khôi phục một generation đã lưu; không ghi đè bản sửa tay chưa sync. `scene set/clear` dành cho mốc thời gian/hồi tưởng, cần source quote và lý do; xem `--help` để biết flags.
@@ -305,8 +317,8 @@ Nếu sửa bằng trình soạn thảo ngoài, chỉ đổi văn bản giữa `
 Xem danh sách và lấy ảnh ra workspace để kiểm tra/edit:
 
 ```powershell
-.\novel-translate-cli.exe image list --workspace $workspacePath --volume vol01
-.\novel-translate-cli.exe image export --workspace $workspacePath --volume vol01
+.\scripts\run.ps1 image list --workspace $workspacePath --volume vol01
+.\scripts\run.ps1 image export --workspace $workspacePath --volume vol01
 ```
 
 `image export` trả JSON gồm occurrence ID và đường dẫn ảnh; mặc định ghi vào `vol01_translation/images/source/`. Có thể đổi bằng `--directory` tương đối với workspace. Lệnh không ghi đè file đã được bạn sửa; nên lưu ảnh edit ở thư mục riêng.
@@ -321,12 +333,12 @@ Mỗi lần xuất hiện của ảnh cần một quyết định có lý do:
 | `transcript` | Giữ ảnh và thêm bản dịch chữ sau khối nội dung chứa ảnh |
 
 ```powershell
-.\novel-translate-cli.exe image assess --workspace $workspacePath --volume vol01 --id IMAGE_ID --disposition no-text --reason "Đã xem: tranh không có chữ"
-.\novel-translate-cli.exe image assess --workspace $workspacePath --volume vol01 --id IMAGE_ID --disposition replace --file "images/edited/anh-viet.jpg" --reason "Đã đối chiếu ảnh edit với nguồn"
-.\novel-translate-cli.exe image assess --workspace $workspacePath --volume vol01 --id IMAGE_ID --disposition transcript --transcript-file "images/anh-viet.txt" --reason "Đã đối chiếu bản dịch chữ trong ảnh"
+.\scripts\run.ps1 image assess --workspace $workspacePath --volume vol01 --id IMAGE_ID --disposition no-text --reason "Đã xem: tranh không có chữ"
+.\scripts\run.ps1 image assess --workspace $workspacePath --volume vol01 --id IMAGE_ID --disposition replace --file "images/edited/anh-viet.jpg" --reason "Đã đối chiếu ảnh edit với nguồn"
+.\scripts\run.ps1 image assess --workspace $workspacePath --volume vol01 --id IMAGE_ID --disposition transcript --transcript-file "images/anh-viet.txt" --reason "Đã đối chiếu bản dịch chữ trong ảnh"
 ```
 
-Thay `IMAGE_ID` bằng occurrence ID thật, và chọn một quyết định phù hợp cho mỗi ảnh. File transcript phải là UTF-8; có thể dùng `--transcript "Bản dịch ngắn"` thay file. TUI cũng có các thao tác xuất ảnh và lưu quyết định.
+Thay `IMAGE_ID` bằng occurrence ID thật, và chọn một quyết định phù hợp cho mỗi ảnh. File transcript phải là UTF-8; có thể dùng `--transcript "Bản dịch ngắn"` thay file. Trong TUI, mở **Kiểm tra & EPUB**, chọn occurrence ảnh, nhấn **a**, nhập disposition/lý do và đường dẫn thay thế hoặc transcript rồi lưu.
 
 Ảnh thay thế được kiểm tra hash khi verify/export; sửa file sau khi xác nhận thì phải assess lại. Các vị trí dùng chung tài nguyên phải thống nhất dùng ảnh gốc hoặc cùng bản thay thế. Chú thích ảnh độc lập có thể khác nhau theo vị trí. Readback kiểm tra phần chú thích, thứ tự ảnh và bytes tài nguyên.
 
@@ -341,7 +353,7 @@ java -version
 java -jar "D:/Tools/epubcheck/epubcheck.jar" --version
 ```
 
-Nhấn **c** trong TUI để chọn JAR/executable của EPUBCheck và thư mục font. Hoặc sửa phần `output` hiện có trong `workspace.yaml`:
+Trong TUI, mở **Cấu hình → Xuất & EPUBCheck** để đặt thư mục xuất, executable/JAR EPUBCheck và thư mục font. Hoặc sửa phần `output` hiện có trong `workspace.yaml`:
 
 ```yaml
 output:
@@ -355,9 +367,9 @@ output:
 `epubcheck` cũng nhận đường dẫn executable. Thư mục font nếu khai báo phải có `LiberationSerif-Regular.ttf`, `LiberationSerif-Bold.ttf`, `LiberationSerif-Italic.ttf`, `LiberationSerif-BoldItalic.ttf`; nếu bỏ qua thì không nhúng font. Hiện chỉ có template `sample-vi`, giữ cấu trúc nguồn và áp kiểu đọc ngang/LTR.
 
 ```powershell
-.\novel-translate-cli.exe verify --workspace $workspacePath --volume vol01
-.\novel-translate-cli.exe export --workspace $workspacePath --volume vol01 --preview
-.\novel-translate-cli.exe export --workspace $workspacePath --volume vol01
+.\scripts\run.ps1 verify --workspace $workspacePath --volume vol01
+.\scripts\run.ps1 export --workspace $workspacePath --volume vol01 --preview
+.\scripts\run.ps1 export --workspace $workspacePath --volume vol01
 ```
 
 - `verify`: kiểm tra độ phủ, revision/ngữ cảnh còn hợp lệ và quyết định ảnh; chưa dựng EPUB hay chạy EPUBCheck.

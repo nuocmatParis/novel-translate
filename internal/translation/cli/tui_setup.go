@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -27,6 +28,9 @@ func providerPath(c workspace.Config) string {
 func (m *translationTUI) saveModelSetup(values []string) func(context.Context, io.Writer, io.Writer) error {
 	root := m.config.Root
 	return func(ctx context.Context, out, progress io.Writer) error {
+		if len(values) != modelContextField+1 {
+			return errors.New("thiếu thông tin thiết lập model")
+		}
 		unlock, err := (state.Store{Root: root}).Lock(ctx)
 		if err != nil {
 			return err
@@ -36,27 +40,34 @@ func (m *translationTUI) saveModelSetup(values []string) func(context.Context, i
 		if err != nil {
 			return err
 		}
-		protocol, modelName, baseURL := strings.TrimSpace(values[0]), strings.TrimSpace(values[1]), strings.TrimSpace(values[2])
-		switch protocol {
-		case "openai", "gemini", "anthropic", "openrouter", "ollama":
-		default:
-			return errors.New("giao thức: openai, gemini, anthropic, openrouter hoặc ollama")
+		protocol, modelName, baseURL := strings.TrimSpace(values[modelProviderField]), strings.TrimSpace(values[modelVersionField]), strings.TrimSpace(values[modelURLField])
+		if !slices.Contains(modelProviders, protocol) {
+			return errors.New("nhà cung cấp: OpenAI, Gemini, DeepSeek, Claude, OpenRouter hoặc Ollama")
 		}
 		if modelName == "" {
 			return errors.New("cần tên model")
 		}
-		window, err := strconv.Atoi(strings.TrimSpace(values[5]))
+		effort := strings.TrimSpace(values[modelEffortField])
+		if !slices.Contains(modelEfforts(protocol, modelName), effort) {
+			return errors.New("mức suy luận không được hỗ trợ cho model này; chọn lại hoặc dùng mặc định API")
+		}
+		window, err := strconv.Atoi(strings.TrimSpace(values[modelContextField]))
 		if err != nil || window < 0 {
 			return errors.New("context tokens phải là số >= 0")
 		}
 		keyName := "NOVEL_TRANSLATE_API_KEY"
 		old, _ := bootstrap.ReadConfigFile(providerPath(c))
 		pc := old.DefaultProviderConfig()
-		if pc.APIKeyEnv != "" {
+		oldType, _ := pc.ProviderType(old.Provider)
+		sameProvider := oldType == protocol
+		if sameProvider && pc.APIKeyEnv != "" {
 			keyName = pc.APIKeyEnv
 		}
-		key := strings.TrimSpace(values[3])
-		if key == "" {
+		if old.Provider != "" && !sameProvider {
+			keyName = "NOVEL_TRANSLATE_" + strings.ToUpper(protocol) + "_API_KEY"
+		}
+		key := strings.TrimSpace(values[modelKeyField])
+		if key == "" && sameProvider {
 			key = pc.APIKey
 		}
 		if key == "" {
@@ -70,12 +81,12 @@ func (m *translationTUI) saveModelSetup(values []string) func(context.Context, i
 		}
 		pc = bootstrap.ProviderConfig{Type: protocol, BaseURL: baseURL, Models: []bootstrap.ModelConfig{{Name: modelName, ContextWindow: window}}}
 		if protocol == "openai" {
-			pc.API = strings.TrimSpace(values[4])
+			pc.API = strings.TrimSpace(values[modelAPIField])
 		}
 		if key != "" {
 			pc.APIKeyEnv = keyName
 		}
-		cfg := bootstrap.Config{Provider: "translation-service", ModelName: modelName, Providers: map[string]bootstrap.ProviderConfig{"translation-service": pc}, Budget: old.Budget}
+		cfg := bootstrap.Config{Provider: protocol, ModelName: modelName, Providers: map[string]bootstrap.ProviderConfig{protocol: pc}, ReasoningEffort: effort, Budget: old.Budget}
 		// Validate using a private copy, never persist the resolved key in JSON.
 		validated := bootstrap.CloneConfig(cfg)
 		target := validated.Providers[cfg.Provider]

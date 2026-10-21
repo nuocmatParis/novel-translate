@@ -11,6 +11,8 @@ go.work.sum
 config
 workspace
 dist
+bin
+*.exe
 tasks
 refer
 output*

@@ -12,6 +12,7 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/voocel/agentcore v1.8.2
 	golang.org/x/sys v0.47.0
+	golang.org/x/text v0.3.8
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -34,5 +35,4 @@ require (
 	github.com/rogpeppe/go-internal v1.16.0 // indirect
 	github.com/voocel/litellm v1.8.10 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
-	golang.org/x/text v0.3.8 // indirect
 )

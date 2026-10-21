@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/voocel/ainovel-cli/internal/llmcontract"
@@ -14,6 +15,7 @@ import (
 	"github.com/voocel/ainovel-cli/internal/translation/domain"
 	"github.com/voocel/ainovel-cli/internal/translation/epub"
 	"github.com/voocel/ainovel-cli/internal/translation/model"
+	"github.com/voocel/ainovel-cli/internal/translation/progress"
 	"github.com/voocel/ainovel-cli/internal/translation/revision"
 	"github.com/voocel/ainovel-cli/internal/translation/skills"
 	"github.com/voocel/ainovel-cli/internal/translation/state"
@@ -21,7 +23,33 @@ import (
 	"github.com/voocel/ainovel-cli/internal/translation/workspace"
 )
 
-var ErrUnresolved = errors.New("còn vấn đề chưa giải quyết")
+var (
+	ErrUnresolved = errors.New("còn vấn đề chưa giải quyết")
+	ErrPaused     = errors.New("tác vụ tạm dừng")
+)
+
+type ReviewPolicy struct {
+	ReviewOnly      bool `json:"review_only"`
+	Force           bool `json:"force"`
+	AutoRepair      bool `json:"auto_repair"`
+	MaxRepairRounds int  `json:"max_repair_rounds"`
+}
+
+type RunScope struct {
+	Chapters    []string `json:"chapters,omitempty"`
+	UnitIDs     []string `json:"unit_ids,omitempty"`
+	SkipUnitIDs []string `json:"skip_unit_ids,omitempty"`
+	BatchIndex  int      `json:"batch_index,omitempty"`
+}
+
+type RunOptions struct {
+	Policy      ReviewPolicy
+	Scope       RunScope
+	Observer    progress.Observer
+	IsPaused    func() bool
+	PauseNotify func()
+	RunID       string
+}
 
 const operationPromptVersion = "jp-vi-2026-10-12"
 
@@ -40,6 +68,7 @@ type Runner struct {
 	Store    state.Store
 	Model    model.Caller
 	Progress func(string)
+	Observer progress.Observer
 }
 type translated struct {
 	Units []struct {
@@ -382,28 +411,94 @@ func ImpactPlan(c workspace.Config, v workspace.Volume, store state.Store, book 
 	return p, nil
 }
 func (r Runner) Run(ctx context.Context, reviewOnly bool, chapter string) error {
+	var chapters []string
+	if chapter != "" {
+		chapters = []string{chapter}
+	}
+	return r.RunWithOptions(ctx, RunOptions{
+		Policy: ReviewPolicy{
+			ReviewOnly:      reviewOnly,
+			AutoRepair:      !reviewOnly,
+			MaxRepairRounds: r.Config.Run.MaxRepairRounds,
+		},
+		Scope: RunScope{
+			Chapters: chapters,
+		},
+	})
+}
+
+func (r Runner) RunWithOptions(ctx context.Context, opts RunOptions) error {
+	runID := opts.RunID
+	if runID == "" {
+		runID = fmt.Sprintf("run-%d", time.Now().UnixNano())
+	}
+	eventSequence := 0
+	emit := func(kind progress.EventKind, phase, msg string, unitID, chapterID string, data any) {
+		eventSequence++
+		role, modelName := "", ""
+		switch phase {
+		case "translate", "repair":
+			role = "translation"
+			modelName = r.Model.Identity(role)
+		case "review":
+			role = "translation_review"
+			modelName = r.Model.Identity(role)
+		}
+		ev := progress.Event{
+			SchemaVersion: 1,
+			EventID:       fmt.Sprintf("%s-%06d", runID, eventSequence),
+			RunID:         runID,
+			Sequence:      eventSequence,
+			Time:          time.Now(),
+			Kind:          kind,
+			VolumeID:      r.Volume.ID,
+			ChapterID:     chapterID,
+			UnitID:        unitID,
+			Phase:         phase,
+			Message:       msg,
+			Model:         modelName,
+			Role:          role,
+			Data:          data,
+		}
+		if r.Observer != nil {
+			r.Observer.OnEvent(ev)
+		}
+		if opts.Observer != nil {
+			opts.Observer.OnEvent(ev)
+		}
+	}
+
+	emit(progress.EventRunStarted, "prepare", "Bắt đầu tác vụ", "", "", nil)
+
 	_, book, e := Source(r.Config, r.Volume, true)
 	if e != nil {
+		emit(progress.EventRunFailed, "prepare", e.Error(), "", "", nil)
 		return e
 	}
 	snapshot, e := skills.Load(r.Config)
 	if e != nil {
+		emit(progress.EventRunFailed, "prepare", e.Error(), "", "", nil)
 		return e
 	}
 	if e = skills.SaveSnapshot(r.Config, snapshot); e != nil {
+		emit(progress.EventRunFailed, "prepare", e.Error(), "", "", nil)
 		return e
 	}
 	g, e := r.Store.Load(r.Volume.ID)
 	if e != nil {
+		emit(progress.EventRunFailed, "prepare", e.Error(), "", "", nil)
 		return e
 	}
 	if g.SourceHash != "" && g.SourceHash != book.SourceHash {
-		return errors.New("generation/source khác nhau")
+		err := errors.New("generation/source khác nhau")
+		emit(progress.EventRunFailed, "prepare", err.Error(), "", "", nil)
+		return err
 	}
 	g.SourceHash = book.SourceHash
 	if g.SourceManifestHash == "" {
 		var ptr SourcePointer
 		if e = state.ReadJSON(r.Store.Path("volumes", r.Volume.ID, "source.json"), &ptr); e != nil {
+			emit(progress.EventRunFailed, "prepare", e.Error(), "", "", nil)
 			return e
 		}
 		g.SourceManifestHash = ptr.ManifestHash
@@ -411,84 +506,145 @@ func (r Runner) Run(ctx context.Context, reviewOnly bool, chapter string) error 
 	}
 	if g.ID != "" {
 		if e = revision.Recover(r.Config, r.Volume, book, g); e != nil {
+			emit(progress.EventRunFailed, "prepare", e.Error(), "", "", nil)
 			return e
 		}
 	}
 	if e = revision.Check(r.Config, r.Volume, book, g); e != nil {
+		emit(progress.EventRunFailed, "prepare", e.Error(), "", "", nil)
 		return e
 	}
-	if chapter != "" {
+
+	filterChapters := map[string]bool{}
+	for _, ch := range opts.Scope.Chapters {
 		found := false
-		for _, ch := range book.Chapters {
-			if ch.ID == chapter {
+		for _, bch := range book.Chapters {
+			if bch.ID == ch {
 				found = true
+				break
 			}
 		}
 		if !found {
-			return fmt.Errorf("chapter %q không tồn tại", chapter)
+			err := fmt.Errorf("chapter %q không tồn tại", ch)
+			emit(progress.EventRunFailed, "prepare", err.Error(), "", "", nil)
+			return err
 		}
+		filterChapters[ch] = true
 	}
+
+	filterUnits := map[string]bool{}
+	for _, uID := range opts.Scope.UnitIDs {
+		filterUnits[uID] = true
+	}
+	skipUnits := map[string]bool{}
+	for _, uID := range opts.Scope.SkipUnitIDs {
+		skipUnits[uID] = true
+	}
+
+	maxRounds := opts.Policy.MaxRepairRounds
+	if maxRounds <= 0 {
+		maxRounds = r.Config.Run.MaxRepairRounds
+	}
+
 	for _, batch := range PlanBatches(book.Chapters) {
-		if r.Progress != nil {
-			r.Progress(fmt.Sprintf("đợt %d: %s", batch.Number, strings.Join(batch.Chapters, ", ")))
+		if opts.Scope.BatchIndex > 0 && batch.Number != opts.Scope.BatchIndex {
+			continue
 		}
+		batchMsg := fmt.Sprintf("đợt %d: %s", batch.Number, strings.Join(batch.Chapters, ", "))
+		if r.Progress != nil {
+			r.Progress(batchMsg)
+		}
+		emit(progress.EventBatchStarted, "batch", batchMsg, "", "", batch)
 		set := map[string]bool{}
 		for _, id := range batch.Chapters {
 			set[id] = true
 		}
 		for _, b := range book.Blocks {
-			if !set[b.Chapter] || (chapter != "" && b.Chapter != chapter) || b.Disposition != "translate" {
+			if !set[b.Chapter] || b.Disposition != "translate" {
+				continue
+			}
+			if skipUnits[b.ID] {
+				continue
+			}
+			if len(filterChapters) > 0 && !filterChapters[b.Chapter] {
+				continue
+			}
+			if len(filterUnits) > 0 && !filterUnits[b.ID] {
 				continue
 			}
 			if e = ctx.Err(); e != nil {
+				emit(progress.EventRunCancelled, "cancel", "Tác vụ bị hủy", b.ID, b.Chapter, nil)
 				return e
+			}
+			if opts.IsPaused != nil && opts.IsPaused() {
+				emit(progress.EventPaused, "pause", "Tác vụ tạm dừng tại ranh giới", b.ID, b.Chapter, nil)
+				if opts.PauseNotify != nil {
+					opts.PauseNotify()
+				}
+				return ErrPaused
 			}
 			u, ok := g.Units[b.ID]
 			if ok && u.StaleReason != "" {
-				return fmt.Errorf("%w: revision stale %s; retranslate plan/apply", ErrUnresolved, b.ID)
+				err := fmt.Errorf("%w: revision stale %s; retranslate plan/apply", ErrUnresolved, b.ID)
+				emit(progress.EventRunFailed, "freshness", err.Error(), b.ID, b.Chapter, nil)
+				return err
 			}
 			if ok && !u.RefreshDependencies && u.Dependencies.Skills != snapshot.Fingerprint(b.Position, b.Source) {
-				return fmt.Errorf("%w: skills stale; retranslate plan/apply", ErrUnresolved)
+				err := fmt.Errorf("%w: skills stale; retranslate plan/apply", ErrUnresolved)
+				emit(progress.EventRunFailed, "freshness", err.Error(), b.ID, b.Chapter, nil)
+				return err
 			}
-			if reviewOnly && !ok {
+			if opts.Policy.ReviewOnly && !ok {
 				continue
 			}
 			if e = r.fresh(book, g, snapshot); e != nil {
+				emit(progress.EventRunFailed, "freshness", e.Error(), b.ID, b.Chapter, nil)
 				return e
 			}
 			ctxEvents, e := r.context(g, b.Position)
 			if e != nil {
+				emit(progress.EventRunFailed, "context", e.Error(), b.ID, b.Chapter, nil)
 				return e
 			}
 			contextHash, e := ContextDigest(r.Config, r.Volume, ctxEvents, b.Position)
 			if e != nil {
+				emit(progress.EventRunFailed, "context", e.Error(), b.ID, b.Chapter, nil)
 				return e
 			}
 			if ok && !u.RefreshDependencies && u.Dependencies.Context != contextHash {
-				return fmt.Errorf("%w: continuity stale %s; lập retranslate plan", ErrUnresolved, b.ID)
+				err := fmt.Errorf("%w: continuity stale %s; lập retranslate plan", ErrUnresolved, b.ID)
+				emit(progress.EventRunFailed, "continuity", err.Error(), b.ID, b.Chapter, nil)
+				return err
 			}
 			rules, conflicts, ruleErr := ResolvedRules(r.Config, r.Volume, r.Store, g, snapshot, b.Position, b.Source)
 			if ruleErr != nil {
+				emit(progress.EventRunFailed, "rules", ruleErr.Error(), b.ID, b.Chapter, nil)
 				return ruleErr
 			}
 			if len(conflicts) > 0 {
-				return fmt.Errorf("%w: rule conflicts %v", ErrUnresolved, conflicts)
+				err := fmt.Errorf("%w: rule conflicts %v", ErrUnresolved, conflicts)
+				emit(progress.EventRunFailed, "rules", err.Error(), b.ID, b.Chapter, nil)
+				return err
 			}
 			ruleHashes := map[string]string{}
 			for _, rule := range rules {
 				ruleHashes[rule.ID] = domain.Digest(rule)
 			}
 			if ok && !u.RefreshDependencies && domain.Digest(u.Dependencies.Rules) != domain.Digest(ruleHashes) {
-				return fmt.Errorf("%w: rules stale %s; lập retranslate plan", ErrUnresolved, b.ID)
+				err := fmt.Errorf("%w: rules stale %s; lập retranslate plan", ErrUnresolved, b.ID)
+				emit(progress.EventRunFailed, "rules", err.Error(), b.ID, b.Chapter, nil)
+				return err
 			}
-			if ok && u.Accepted() {
+			if ok && u.Accepted() && !opts.Policy.Force {
 				continue
 			}
 			core, references, used, e := snapshot.Prompt(b.Position, b.Source, r.Model.InputLimit("translation")/2)
 			if e != nil {
+				emit(progress.EventRunFailed, "prompt", e.Error(), b.ID, b.Chapter, nil)
 				return e
 			}
 			if e = state.WriteJSON(r.Store.Path("runs", snapshot.Digest, "used-skills", b.ID[strings.IndexByte(b.ID, ':')+1:]+".json"), used); e != nil {
+				emit(progress.EventRunFailed, "skills", e.Error(), b.ID, b.Chapter, nil)
 				return e
 			}
 			deps := domain.Dependencies{Source: b.SourceHash, Skills: snapshot.Fingerprint(b.Position, b.Source), Rules: map[string]string{}, Context: contextHash, Model: r.Model.Identity("translation"), Prompt: domain.Digest(struct {
@@ -506,6 +662,7 @@ func (r Runner) Run(ctx context.Context, reviewOnly bool, chapter string) error 
 				u.Events = nil
 				u.Rules = nil
 				if e = r.commit(book, &g, snapshot, u); e != nil {
+					emit(progress.EventRunFailed, "commit", e.Error(), b.ID, b.Chapter, nil)
 					return e
 				}
 			}
@@ -514,6 +671,7 @@ func (r Runner) Run(ctx context.Context, reviewOnly bool, chapter string) error 
 			p.References = references
 			p.Temporal, e = SceneAt(r.Config, r.Volume, b.Position)
 			if e != nil {
+				emit(progress.EventRunFailed, "scene", e.Error(), b.ID, b.Chapter, nil)
 				return e
 			}
 			for i := b.Sequence - 1; i >= 0 && len(p.Previous) < 2; i-- {
@@ -522,54 +680,86 @@ func (r Runner) Run(ctx context.Context, reviewOnly bool, chapter string) error 
 				}
 			}
 			if !ok {
+				emit(progress.EventUnitStarted, "translate", "Đang dịch khối", b.ID, b.Chapter, b)
 				u, e = r.translate(ctx, b, p, core, deps, nil)
 				if e != nil {
+					emit(progress.EventRunFailed, "translate", e.Error(), b.ID, b.Chapter, nil)
 					return e
 				}
 				if e = r.commit(book, &g, snapshot, u); e != nil {
+					emit(progress.EventRunFailed, "commit", e.Error(), b.ID, b.Chapter, nil)
 					return e
 				}
+				emit(progress.EventDraftCommitted, "draft", "Đã lưu bản dịch", b.ID, b.Chapter, u)
 			}
 			for repair := 0; ; repair++ {
 				if e = ctx.Err(); e != nil {
+					emit(progress.EventRunCancelled, "cancel", "Tác vụ bị hủy", b.ID, b.Chapter, nil)
 					return e
 				}
+				if opts.IsPaused != nil && opts.IsPaused() {
+					emit(progress.EventPaused, "pause", "Tác vụ tạm dừng tại ranh giới", b.ID, b.Chapter, nil)
+					if opts.PauseNotify != nil {
+						opts.PauseNotify()
+					}
+					return ErrPaused
+				}
+				emit(progress.EventReviewStarted, "review", "Đang review bản dịch", b.ID, b.Chapter, b)
 				review, e := r.review(ctx, b, u, p, core)
 				if e != nil {
+					emit(progress.EventRunFailed, "review", e.Error(), b.ID, b.Chapter, nil)
 					return e
 				}
 				u.Review = &review
 				if e = r.commit(book, &g, snapshot, u); e != nil {
+					emit(progress.EventRunFailed, "commit", e.Error(), b.ID, b.Chapter, nil)
 					return e
 				}
+				emit(progress.EventReviewCommitted, "review", "Đã lưu kết quả review", b.ID, b.Chapter, review)
 				if u.Accepted() {
 					for i := range u.Rules {
 						u.Rules[i].Status = "confirmed"
 					}
 					if len(u.Rules) > 0 {
 						if e = r.commit(book, &g, snapshot, u); e != nil {
+							emit(progress.EventRunFailed, "commit", e.Error(), b.ID, b.Chapter, nil)
 							return e
 						}
 					}
+					emit(progress.EventUnitAccepted, "accepted", "Khối đã đạt đối chiếu", b.ID, b.Chapter, u)
 					break
 				}
-				if repair >= r.Config.Run.MaxRepairRounds {
-					return fmt.Errorf("%w: %s sau %d vòng sửa", ErrUnresolved, b.ID, repair)
+				if opts.Policy.ReviewOnly || !opts.Policy.AutoRepair {
+					break
 				}
+				if u.Origin == "manual" {
+					break
+				}
+				if repair >= maxRounds {
+					err := fmt.Errorf("%w: %s sau %d vòng sửa", ErrUnresolved, b.ID, repair)
+					emit(progress.EventRunFailed, "repair", err.Error(), b.ID, b.Chapter, nil)
+					return err
+				}
+				emit(progress.EventRepairStarted, "repair", fmt.Sprintf("Bắt đầu vòng sửa %d", repair+1), b.ID, b.Chapter, nil)
 				p.Mode = "repair"
 				p.Targets = []domain.Unit{u}
 				next, e := r.translate(ctx, b, p, core, deps, review.Issues)
 				if e != nil {
+					emit(progress.EventRunFailed, "repair", e.Error(), b.ID, b.Chapter, nil)
 					return e
 				}
 				next.Revision = u.Revision + 1
 				u = next
 				if e = r.commit(book, &g, snapshot, u); e != nil {
+					emit(progress.EventRunFailed, "commit", e.Error(), b.ID, b.Chapter, nil)
 					return e
 				}
+				emit(progress.EventRepairCommitted, "repair", "Đã lưu bản sửa", b.ID, b.Chapter, u)
 			}
 		}
+		emit(progress.EventBatchFinished, "batch", fmt.Sprintf("Hoàn tất đợt %d", batch.Number), "", "", batch)
 	}
+	emit(progress.EventRunFinished, "done", "Hoàn tất phạm vi", "", "", nil)
 	return nil
 }
 func (r Runner) commit(book domain.Book, g *domain.Generation, s skills.Snapshot, u domain.Unit) error {

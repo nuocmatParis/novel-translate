@@ -39,7 +39,7 @@ func TestTUIModelSetupPersistsMaskedKeyAndReusesIt(t *testing.T) {
 	}
 	const key = `fake-$key#with"quotes\and spaces`
 	m.openForm("model")
-	values := []string{"gemini", "fake-model", "", key, "chat", "32000"}
+	values := []string{"gemini", "fake-model", "", key, "", "chat", "32000"}
 	for i, value := range values {
 		m.form.fields[i].value = value
 		m.form.fields[i].input.SetValue(value)
@@ -48,12 +48,12 @@ func TestTUIModelSetupPersistsMaskedKeyAndReusesIt(t *testing.T) {
 		t.Fatal("key exposed in form")
 	}
 	// A failed asynchronous save must retain all entered fields for correction.
-	m.form.fields[5].value = "invalid"
+	m.form.fields[modelContextField].value = "invalid"
 	m.submitForm()
 	if done := finishTUITask(t, m); done.err == nil || m.form == nil || m.form.fields[3].value != key {
 		t.Fatal("failed save lost form")
 	}
-	m.form.fields[5].value = "32000"
+	m.form.fields[modelContextField].value = "32000"
 	m.submitForm()
 	if done := finishTUITask(t, m); done.err != nil {
 		t.Fatal(done.err)

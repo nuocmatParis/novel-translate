@@ -21,10 +21,12 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/term"
 	"github.com/voocel/ainovel-cli/internal/bootstrap"
+	"github.com/voocel/ainovel-cli/internal/translation/app"
 	"github.com/voocel/ainovel-cli/internal/translation/engine"
 	"github.com/voocel/ainovel-cli/internal/translation/model"
 	"github.com/voocel/ainovel-cli/internal/translation/skills"
 	"github.com/voocel/ainovel-cli/internal/translation/state"
+	"github.com/voocel/ainovel-cli/internal/translation/tui"
 	"github.com/voocel/ainovel-cli/internal/translation/workspace"
 )
 
@@ -34,15 +36,17 @@ novel-translate-cli tui [--workspace <path>] [--volume <id>]
 novel-translate-cli --tui [--workspace <path>]
 
 Không truyền workspace: mở workspace tại thư mục hiện tại nếu có,
-hoặc chọn Mở/Tạo workspace trên màn hình chào.
-↑/↓ chọn thao tác; ←/→ chọn tập; Enter thực hiện; PgUp/PgDn cuộn log.
-Esc hủy hộp thoại; Ctrl+C dừng tác vụ; q thoát khi rảnh.
-n/o: tạo/mở workspace; a: thêm tập; m: model/API key; c: giới hạn/checker.
-e: sửa bản dịch; s: quy ước riêng; l: thư viện skill chung; ?: trợ giúp.
-Trong biểu mẫu: Ctrl+O chọn file/thư mục; Ctrl+N đổi lựa chọn.
-Trong trình sửa: Ctrl+S lưu; Tab chuyển nguồn/bản dịch; Esc quay lại.
-API key nhập trong TUI được lưu vào .env và tự đọc ở lần mở sau.
-Mở TUI không gọi API. Dịch/review yêu cầu xác nhận trước khi gọi model.
+hoặc mở danh sách workspace gần đây. Workspace mới chỉ cần tên bộ truyện;
+ID và thư mục được tạo tự động trong workspace/.
+Tab đổi panel; ↑/↓ hoặc j/k chọn; Enter thực hiện; PgUp/PgDn cuộn danh sách.
+Esc quay lại; Ctrl+C dừng tác vụ; q thoát khi rảnh; ? trợ giúp theo màn.
+n/o: tạo/mở workspace; a: đăng ký tập; i: import snapshot EPUB.
+p: xuất preview; f: xuất Final khi đủ cổng; Ctrl+S lưu sửa tay/cấu hình.
+Ctrl+O mở bộ chọn file/thư mục tại các trường đường dẫn.
+Tab Ghi chú trong Bản dịch lưu ghi chú riêng theo khối, không đưa vào prompt.
+Tác vụ model bắt đầu từ scope đã chọn; mở màn hoặc đổi panel không gọi model.
+Pause/resume (p) chỉ áp dụng cho dịch/review tại ranh giới khối.
+API key nhập trong Cấu hình được che và lưu vào .env của workspace.
 `
 
 func runTUI(ctx context.Context, args []string, out, errout io.Writer, options Options) error {
@@ -65,21 +69,15 @@ func runTUI(ctx context.Context, args []string, out, errout io.Writer, options O
 			*path = "."
 		}
 	}
-	m := newTUI(ctx, options)
+	svc := app.NewService(app.ServiceOptions{NewModel: options.NewModel})
 	if *path != "" {
-		c, err := workspace.Load(*path)
+		c, err := svc.LoadWorkspace(*path)
 		if err != nil {
 			return err
 		}
-		m.config = &c
 		if *volume != "" {
 			if _, err := c.Volume(*volume); err != nil {
 				return err
-			}
-			for i, v := range c.Volumes {
-				if v.ID == *volume {
-					m.volume = i
-				}
 			}
 		}
 	} else if *volume != "" {
@@ -95,8 +93,16 @@ func runTUI(ctx context.Context, args []string, out, errout io.Writer, options O
 	// Child jobs are also canceled if the terminal/program closes unexpectedly.
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	m.ctx = runCtx
-	_, err := tea.NewProgram(m, tea.WithInput(input), tea.WithOutput(out), tea.WithContext(runCtx), tea.WithAltScreen()).Run()
+
+	appInstance := tui.NewApp(svc)
+	appInstance.SetJobContext(runCtx)
+	if *volume != "" && svc.Config != nil {
+		if err := appInstance.SetSelectedVolumeID(*volume); err != nil {
+			return err
+		}
+		appInstance.OpenScreen("content")
+	}
+	_, err := tea.NewProgram(appInstance, tea.WithInput(input), tea.WithOutput(out), tea.WithContext(runCtx), tea.WithAltScreen()).Run()
 	return err
 }
 
@@ -167,11 +173,13 @@ type tuiField struct {
 	secret, browse, directory bool
 	choices                   []string
 	extensions                []string
+	selectOnly, custom        bool
 }
 type tuiForm struct {
-	kind   string
-	fields []tuiField
-	index  int
+	kind      string
+	fields    []tuiField
+	index     int
+	selection *tuiChoices
 }
 type tuiLogMsg string
 type tuiDoneMsg struct {
@@ -602,21 +610,8 @@ func (m *translationTUI) openForm(kind string) {
 	case "enabled-skills":
 		f.fields = []tuiField{{label: "Skill ID dùng cho bộ này, cách nhau bằng dấu phẩy", value: strings.Join(m.config.EnabledSkills, ", ")}}
 	case "model":
-		protocol, modelName, baseURL, api, window := "openai", "", "", "chat", 0
-		if cfg, err := bootstrap.ReadConfigFile(providerPath(*m.config)); err == nil {
-			pc := cfg.DefaultProviderConfig()
-			protocol, modelName, baseURL = pc.Type, cfg.ModelName, pc.BaseURL
-			if protocol == "" {
-				protocol = cfg.Provider
-			}
-			if pc.API != "" {
-				api = pc.API
-			}
-			if mc, ok := pc.ModelConfig(modelName); ok {
-				window = mc.ContextWindow
-			}
-		}
-		f.fields = []tuiField{{label: "Giao thức (Ctrl+N đổi)", value: protocol, choices: []string{"openai", "gemini", "anthropic", "openrouter", "ollama"}}, {label: "Tên model", value: modelName}, {label: "Base URL (trống: mặc định)", value: baseURL}, {label: "API key (trống: giữ key hiện có)", secret: true}, {label: "API OpenAI (Ctrl+N đổi)", value: api, choices: []string{"chat", "responses"}}, {label: "Context tokens (0: tự nhận)", value: strconv.Itoa(window)}}
+		cfg, _ := bootstrap.ReadConfigFile(providerPath(*m.config))
+		f.fields = newModelForm(cfg)
 	case "settings":
 		f.fields = []tuiField{{label: "Giới hạn requests (0: không giới hạn)", value: strconv.Itoa(m.config.Run.MaxRequests)}, {label: "Timeout mỗi request (giây)", value: strconv.Itoa(m.config.Run.RequestTimeoutSeconds)}, {label: "EPUBCheck executable/JAR", value: m.config.Output.EPUBCheck, browse: true}, {label: "Thư mục font (có thể bỏ trống)", value: m.config.Output.FontDirectory, browse: true, directory: true}}
 	case "image":
@@ -633,10 +628,13 @@ func (m *translationTUI) openForm(kind string) {
 			field.input.EchoCharacter = '•'
 		}
 	}
+	if kind == "model" {
+		f.refreshModelChoices(false)
+	}
 	f.fields[0].input.Focus()
 	m.notice = ""
 	if kind == "model" {
-		m.notice = "Thiết lập nhanh dùng chung một model cho các role. Nếu cần nhiều model, chọn file cấu hình API có sẵn."
+		m.notice = "Enter chọn nhà cung cấp → phiên bản → suy luận. Danh sách theo tài liệu; quyền dùng tùy API key. Một model cho cả ba role."
 	}
 	if kind == "library" {
 		m.notice = "Thư viện dùng chung cho mọi workspace mặc định. Skills/SKILL.md vẫn là quy ước riêng của từng bộ."
@@ -646,6 +644,9 @@ func (m *translationTUI) openForm(kind string) {
 
 func (m *translationTUI) updateForm(key tea.KeyMsg) tea.Cmd {
 	f := m.form
+	if f.selection != nil {
+		return m.updateChoices(key)
+	}
 	field := &f.fields[f.index]
 	if field.input.Value() != field.value {
 		field.input.SetValue(field.value)
@@ -654,19 +655,24 @@ func (m *translationTUI) updateForm(key tea.KeyMsg) tea.Cmd {
 	case "esc", "ctrl+c":
 		m.form = nil
 	case "tab", "down":
-		field.input.Blur()
-		f.index = (f.index + 1) % len(f.fields)
-		return f.fields[f.index].input.Focus()
+		return f.focusNext(1)
 	case "shift+tab", "up":
-		field.input.Blur()
-		f.index = (f.index + len(f.fields) - 1) % len(f.fields)
-		return f.fields[f.index].input.Focus()
+		return f.focusNext(-1)
 	case "ctrl+u":
+		if field.selectOnly && !field.custom {
+			return nil
+		}
 		field.value = ""
 		field.input.SetValue("")
+		if f.kind == "model" && f.index == modelVersionField {
+			f.refreshModelChoices(false)
+		}
 	case "ctrl+o":
 		return m.openPicker()
 	case "ctrl+n":
+		if field.selectOnly {
+			return m.openChoices()
+		}
 		if len(field.choices) > 0 {
 			index := -1
 			for i, value := range field.choices {
@@ -679,16 +685,26 @@ func (m *translationTUI) updateForm(key tea.KeyMsg) tea.Cmd {
 			field.input.CursorEnd()
 		}
 	case "enter":
+		if field.selectOnly && !field.custom {
+			return m.openChoices()
+		}
 		if f.index < len(f.fields)-1 {
-			field.input.Blur()
-			f.index++
-			return f.fields[f.index].input.Focus()
+			return f.focusNext(1)
 		}
 		return m.submitForm()
 	default:
+		if field.selectOnly && !field.custom {
+			if key.Type == tea.KeyRunes || key.String() == " " {
+				return m.openChoices()
+			}
+			return nil
+		}
 		var cmd tea.Cmd
 		field.input, cmd = field.input.Update(key)
 		field.value = field.input.Value()
+		if f.kind == "model" && f.index == modelVersionField {
+			f.refreshModelChoices(false)
+		}
 		return cmd
 	}
 	return nil
@@ -782,6 +798,9 @@ func (m *translationTUI) submitForm() tea.Cmd {
 }
 
 func (m *translationTUI) View() string {
+	if m.form != nil && m.form.selection != nil {
+		return m.form.choicesView(m.width, m.height)
+	}
 	if m.showHelp {
 		return "PHÍM TẮT TUI\n\nn: tạo workspace · o: mở workspace · a: thêm tập\nm: thiết lập model/API key · c: giới hạn/checker/font\ne: đọc/sửa bản dịch · s: quy ước riêng · l: thư viện skill chung\nSkill chung dùng cho nhiều bộ; quy ước riêng luôn ưu tiên trong bộ đó.\n\nTrong ô nhập: Ctrl+O chọn file/thư mục · Ctrl+N đổi lựa chọn\n←/→ Home/End di chuyển con trỏ · Ctrl+U xóa ô\nTrong trình sửa: Ctrl+S lưu · Tab chuyển nguồn/bản dịch\nEsc quay lại; thay đổi chưa lưu có xác nhận trước khi bỏ.\n\nAPI key có thể lưu trong .env; không cần export mỗi lần.\nLinux/macOS: sh scripts/run.sh\n\nNhấn phím bất kỳ để quay lại."
 	}
@@ -836,8 +855,14 @@ func (m *translationTUI) View() string {
 		visible := max(1, m.height-len(content)-9)
 		start := max(0, m.form.index-visible+1)
 		for i := start; i < min(len(m.form.fields), start+visible); i++ {
+			if !m.form.fieldVisible(i) {
+				continue
+			}
 			f := m.form.fields[i]
 			value := f.value
+			if f.selectOnly {
+				value = m.form.choiceLabel(i, value)
+			}
 			if f.secret {
 				value = strings.Repeat("•", len([]rune(value)))
 			}
@@ -845,12 +870,15 @@ func (m *translationTUI) View() string {
 			if i == m.form.index {
 				content = append(content, selected.Render(line("› "+f.label+":")))
 				text = line("  " + f.input.View())
+				if f.selectOnly && !f.custom {
+					text = line("  " + cleanTUIText(value) + "  ▾ Enter chọn")
+				}
 			} else {
 				text = line(text)
 			}
 			content = append(content, text)
 		}
-		content = append(content, muted.Render("Tab đổi ô · Enter tiếp/lưu · Ctrl+O chọn file · Ctrl+N đổi lựa chọn · Esc hủy"))
+		content = append(content, muted.Render(line("Tab đổi ô · Enter chọn/tiếp/lưu · Ctrl+O chọn file · Ctrl+N danh sách · Esc hủy")))
 	} else if m.pending != nil {
 		content = append(content, accent.Render(line("Xác nhận: "+m.pending.label)))
 		if m.pending.paid {
