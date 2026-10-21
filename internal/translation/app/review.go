@@ -9,7 +9,28 @@ import (
 	"github.com/voocel/ainovel-cli/internal/translation/engine"
 	"github.com/voocel/ainovel-cli/internal/translation/epub"
 	"github.com/voocel/ainovel-cli/internal/translation/revision"
+	"github.com/voocel/ainovel-cli/internal/translation/skills"
+	"github.com/voocel/ainovel-cli/internal/translation/state"
 )
+
+func (s *AppService) bindGenerationSource(volumeID string, book domain.Book, g *domain.Generation) error {
+	if g.SourceHash != "" && g.SourceHash != book.SourceHash {
+		return errors.New("generation/source khác nhau")
+	}
+	g.SourceHash = book.SourceHash
+	if g.SourceManifestHash == "" {
+		var pointer engine.SourcePointer
+		if err := state.ReadJSON(s.Store.Path("volumes", volumeID, "source.json"), &pointer); err != nil {
+			return err
+		}
+		if pointer.Hash != book.SourceHash {
+			return errors.New("source pointer không khớp snapshot đang dùng")
+		}
+		g.SourceManifestHash = pointer.ManifestHash
+		g.SourceManifestFile = pointer.ManifestFile
+	}
+	return nil
+}
 
 func (s *AppService) KeepRevision(volumeID, unitID, reason string) error {
 	reason = strings.TrimSpace(reason)
@@ -37,6 +58,9 @@ func (s *AppService) KeepRevision(volumeID, unitID, reason string) error {
 	if err != nil {
 		return err
 	}
+	if err := s.bindGenerationSource(v.ID, book, &g); err != nil {
+		return err
+	}
 	u, ok := g.Units[unitID]
 	if !ok {
 		return errors.New("không tìm thấy khối: " + unitID)
@@ -53,7 +77,40 @@ func (s *AppService) KeepRevision(volumeID, unitID, reason string) error {
 		return errors.New("không tìm thấy khối nguồn: " + unitID)
 	}
 
+	// A user keep decision is made against the current source and local
+	// dependencies. Capture those fingerprints so a manual revision does not
+	// immediately appear stale merely because it has no model-generated deps.
+	snapshot, err := skills.Load(*s.Config)
+	if err != nil {
+		return err
+	}
+	events, err := engine.ContextEvents(*s.Config, v, s.Store, g, block.Position, nil)
+	if err != nil {
+		return err
+	}
+	contextHash, err := engine.ContextDigest(*s.Config, v, events, block.Position)
+	if err != nil {
+		return err
+	}
+	rules, _, err := engine.ResolvedRules(*s.Config, v, s.Store, g, snapshot, block.Position, block.Source)
+	if err != nil {
+		return err
+	}
+	ruleHashes := make(map[string]string, len(rules))
+	for _, rule := range rules {
+		ruleHashes[rule.ID] = domain.Digest(rule)
+	}
+
 	expectedTargetHash := domain.Hash([]byte(u.Target))
+	u.SourceHash = block.SourceHash
+	u.StaleReason = ""
+	u.RefreshDependencies = false
+	u.Dependencies = domain.Dependencies{
+		Source:  block.SourceHash,
+		Skills:  snapshot.Fingerprint(block.Position, block.Source),
+		Rules:   ruleHashes,
+		Context: contextHash,
+	}
 	if u.Review == nil {
 		u.Review = &domain.Review{
 			SourceHash: block.SourceHash,
@@ -96,6 +153,9 @@ func (s *AppService) SaveManualTranslation(volumeID, unitID, newTarget string) e
 	}
 	g, err := s.Store.Load(v.ID)
 	if err != nil {
+		return err
+	}
+	if err := s.bindGenerationSource(v.ID, book, &g); err != nil {
 		return err
 	}
 	if g.Units == nil {

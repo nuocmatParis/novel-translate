@@ -90,7 +90,7 @@ func TestAppServiceQueriesAndReview(t *testing.T) {
 		if item.UnitID == firstID {
 			found = true
 			if item.Status != "Người dùng giữ" {
-				t.Fatalf("expected status 'Người dùng giữ', got %q", item.Status)
+				t.Fatalf("expected status 'Người dùng giữ', got %q (stale: %q)", item.Status, item.StaleReason)
 			}
 		}
 	}

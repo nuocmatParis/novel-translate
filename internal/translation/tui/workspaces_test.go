@@ -49,7 +49,7 @@ func TestWelcomeSelectsWorkspaceFromMetadata(t *testing.T) {
 	if !strings.Contains(view, cfg.Series.Title) || !strings.Contains(view, "1 tập") || strings.Contains(view, "Nhập đường dẫn") {
 		t.Fatal("welcome does not show selectable workspace metadata", view)
 	}
-	if a.WelcomeScreen.SelectedIndex != 1 {
+	if a.WelcomeScreen.SelectedIndex != 2 {
 		t.Fatal("existing workspace should be selected by default")
 	}
 	a.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -115,7 +115,7 @@ func TestWelcomeCancelRefreshAndLongList(t *testing.T) {
 	for range 4 {
 		a.Update(tea.KeyMsg{Type: tea.KeyPgDown})
 	}
-	if a.WelcomeScreen.SelectedIndex != 25 || !strings.Contains(a.View(), "Bộ truyện 24") {
+	if a.WelcomeScreen.SelectedIndex != len(a.WelcomeScreen.Workspaces)+1 || !strings.Contains(a.View(), "Bộ truyện 24") {
 		t.Fatal("workspace list did not scroll to the selected row")
 	}
 	typeWorkspaceName(a, "n")
@@ -133,7 +133,7 @@ func TestWelcomeCancelRefreshAndLongList(t *testing.T) {
 		t.Fatal("opening a deleted workspace silently succeeded")
 	}
 	typeWorkspaceName(a, "r")
-	if len(a.WelcomeScreen.Workspaces) != 24 || a.WelcomeScreen.SelectedIndex > 24 {
+	if len(a.WelcomeScreen.Workspaces) != 24 || a.WelcomeScreen.SelectedIndex > len(a.WelcomeScreen.Workspaces)+1 {
 		t.Fatal("refresh did not remove a deleted workspace")
 	}
 }

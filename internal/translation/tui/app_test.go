@@ -72,6 +72,7 @@ func TestAppNavigationAndScreenSwitching(t *testing.T) {
 func TestAppKeyRouting(t *testing.T) {
 	svc := app.NewService(app.ServiceOptions{})
 	appInstance := tui.NewApp(svc)
+	appInstance.Update(tea.WindowSizeMsg{Width: 120, Height: 35})
 
 	// Focus sidebar with tab
 	appInstance.Update(tea.KeyMsg{Type: tea.KeyTab})
@@ -111,6 +112,7 @@ func TestReviewScreenQueueKeyKeep(t *testing.T) {
 
 	appInstance := tui.NewApp(svc)
 	appInstance.CurrentScreen = "review"
+	appInstance.ReviewScreen.Queue = []app.ReviewQueueItem{{UnitID: "unit:one"}}
 
 	// Press 'k' to enter reason for keeping
 	appInstance.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
@@ -133,6 +135,7 @@ func TestWorkspace1DashboardView(t *testing.T) {
 	}
 
 	appInstance := tui.NewApp(svc)
+	appInstance.Update(tea.WindowSizeMsg{Width: 120, Height: 35})
 	if appInstance.CurrentScreen != "dashboard" {
 		t.Fatalf("expected dashboard screen when workspace loaded, got %s", appInstance.CurrentScreen)
 	}
